@@ -37,5 +37,9 @@
       "WebFetch(domain:nextjs.org)",
       "WebFetch(domain:tailwindcss.com)"
     ]
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
   }
 }
