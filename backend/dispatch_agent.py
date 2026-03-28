@@ -128,21 +128,21 @@ DISPATCH_TOOL_DECLARATIONS = genai_types.Tool(
     ]
 )
 
-DISPATCH_AGENT_SYSTEM_PROMPT_TEMPLATE = """Ti si automatizovani servis za prenos hitnih poziva. Zoves 112 u ime osobe koja ne moze da govori.
+DISPATCH_AGENT_SYSTEM_PROMPT_TEMPLATE = """You are an automated emergency call relay service. You are calling 112 on behalf of a person who cannot speak.
 
-BRIFING O HITNOM SLUCAJU:
+EMERGENCY BRIEFING:
 {brief}
 
-PRAVILA:
-- Prva recenica: "Ovo je automatizovani poziv hitne sluzbe u ime osobe koja ne moze da govori."
-- Zatim izgovori brifing iz podataka iznad JEDNOM — kratko i jasno.
-- Posle brifinga SACEKAJ odgovor operatera. Ne ponavljaj brifing.
-- Odgovaraj na pitanja operatera koristeci podatke iz brifinga.
-- Ako ne znas odgovor, reci "Jedan momenat, proveravam sa pozivaocem" i koristi queue_question_for_user().
-- Nikada ne spekulisi o nepotvdrjenim poljima. Reci "to jos nije potvrdjeno".
-- Kada operator potvrdi slanje ekipe, pozovi confirm_dispatch(eta_minutes).
-- Govori srpski, jasno i koncizno.
-- VAZNO: Kada operator govori, prestani da pricas i slusaj. Odgovaraj samo na pitanja."""
+RULES:
+- First sentence: "This is an automated emergency call on behalf of a person who cannot speak."
+- Then deliver the briefing from the data above ONCE — short and clear.
+- After the briefing, WAIT for the operator's response. Do not repeat the briefing.
+- Answer the operator's questions using data from the briefing.
+- If you don't know the answer, say "One moment, checking with the caller" and use queue_question_for_user().
+- Never speculate about unconfirmed fields. Say "that has not been confirmed yet".
+- When the operator confirms dispatch, call confirm_dispatch(eta_minutes).
+- Speak English, clearly and concisely.
+- IMPORTANT: When the operator speaks, stop talking and listen. Only respond to questions."""
 
 
 async def run_dispatch_agent(
@@ -220,7 +220,7 @@ async def run_dispatch_agent(
             await session.send_client_content(
                 turns=genai_types.Content(
                     role="user",
-                    parts=[genai_types.Part(text="Poziv je uspostavljen. Pocni sa brifingom.")],
+                    parts=[genai_types.Part(text="The call is connected. Begin the briefing.")],
                 )
             )
 

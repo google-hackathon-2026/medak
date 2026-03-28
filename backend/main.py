@@ -202,7 +202,7 @@ def create_app(
                     await store.update(session_id, lambda s: setattr(s, "phase", SessionPhase.FAILED))
                     await registry.broadcast(session_id, {
                         "type": "FAILED",
-                        "message": "Korisnik je prekinuo poziv",
+                        "message": "User ended the call",
                     })
                     break
 

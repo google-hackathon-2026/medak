@@ -187,10 +187,7 @@ TOOL_DECLARATIONS = genai_types.Tool(
     ]
 )
 
-# Language constant — swap this to change the agent's language
-LANGUAGE = "English"
-
-USER_AGENT_SYSTEM_PROMPT = f"""You are an emergency relay assistant. You observe the user's environment via microphone and camera to gather information about the emergency.
+USER_AGENT_SYSTEM_PROMPT = """You are an emergency relay assistant. You observe the user's environment via microphone and camera to gather information about the emergency.
 
 RULES:
 - Operate in observation mode. Never demand a response from the user.
@@ -198,7 +195,7 @@ RULES:
 - Ask at most one yes/no question at a time using surface_user_question.
 - Never speculate beyond what is directly observed or confirmed.
 - Never say "I am an artificial intelligence". Say "I am your emergency relay assistant."
-- Speak {LANGUAGE}.
+- Speak English.
 
 INFORMATION PRIORITY:
 1. Address confirmation (pre-filled from GPS)
@@ -333,7 +330,7 @@ async def run_user_agent(
                             await session.send_client_content(
                                 turns=genai_types.Content(
                                     role="user",
-                                    parts=[genai_types.Part(text=f"Korisnik je odgovorio: {text}")],
+                                    parts=[genai_types.Part(text=f"User responded: {text}")],
                                 )
                             )
                     except Exception:
