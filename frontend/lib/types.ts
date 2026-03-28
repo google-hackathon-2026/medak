@@ -83,9 +83,5 @@ export interface TranscriptEntry {
 
 // User info (persisted in AsyncStorage via settings screen)
 export interface UserInfo {
-  name: string;
-  address: string;
-  phone: string;
-  medicalNotes: string;
-  disability: "DEAF" | "MUTE" | "DEAF_MUTE" | "";
+  personalInfo: string;
 }

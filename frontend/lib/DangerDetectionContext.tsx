@@ -1,25 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter, usePathname } from "expo-router";
 import { useDangerDetection } from "./useDangerDetection";
-import {
-  DangerSettings,
-  getDangerSettings,
-  DEFAULT_DANGER_SETTINGS,
-} from "./dangerSettings";
+import { initiateSOSCall } from "./sosFlow";
 import type { DangerType } from "./types";
 
 interface DangerDetectionContextValue {
-  alarmActive: boolean;
   dismissAlarm: () => void;
-  isMonitoring: boolean;
-  reloadSettings: () => Promise<void>;
 }
 
 const DangerDetectionContext = createContext<DangerDetectionContextValue>({
-  alarmActive: false,
   dismissAlarm: () => {},
-  isMonitoring: false,
-  reloadSettings: async () => {},
 });
 
 export function useDangerDetectionContext() {
@@ -33,40 +23,53 @@ export function DangerDetectionProvider({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [settings, setSettings] = useState<DangerSettings>(DEFAULT_DANGER_SETTINGS);
   const [alarmActive, setAlarmActive] = useState(false);
   const navigatingRef = useRef(false);
   const alarmActiveRef = useRef(false);
   alarmActiveRef.current = alarmActive;
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Don't detect on session/alarm screens or when alarm is already firing
-  const suppressed = pathname === "/session" || pathname === "/alarm" || alarmActive;
-  const enabled =
-    !suppressed &&
-    (settings.fallDetectionEnabled || settings.shakeSOSEnabled);
-
-  const loadSettings = useCallback(async () => {
-    const s = await getDangerSettings();
-    setSettings(s);
+  // Clean up timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, []);
 
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
+  const suppressed = pathname === "/session" || pathname === "/alarm" || alarmActive;
+
+  const handleShakeDirectCall = useCallback(async () => {
+    try {
+      const { sessionId } = await initiateSOSCall({ emergencyType: "AMBULANCE" });
+      router.push({ pathname: "/session", params: { sessionId } });
+    } catch {
+      router.push({ pathname: "/alarm", params: { type: "SHAKE" } });
+    } finally {
+      timeoutRef.current = setTimeout(() => {
+        navigatingRef.current = false;
+        setAlarmActive(false);
+      }, 1000);
+    }
+  }, [router]);
 
   const handleDangerDetected = useCallback(
     (type: DangerType) => {
       if (navigatingRef.current || alarmActiveRef.current) return;
       navigatingRef.current = true;
-
       setAlarmActive(true);
-      router.push({ pathname: "/alarm", params: { type } });
 
-      setTimeout(() => {
-        navigatingRef.current = false;
-      }, 1000);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+      if (type === "SHAKE") {
+        handleShakeDirectCall();
+      } else {
+        router.push({ pathname: "/alarm", params: { type } });
+        timeoutRef.current = setTimeout(() => {
+          navigatingRef.current = false;
+        }, 1000);
+      }
     },
-    [router]
+    [router, handleShakeDirectCall]
   );
 
   const dismissAlarm = useCallback(() => {
@@ -74,22 +77,14 @@ export function DangerDetectionProvider({
     navigatingRef.current = false;
   }, []);
 
-  const { isMonitoring } = useDangerDetection({
+  useDangerDetection({
     onDangerDetected: handleDangerDetected,
-    enabled,
-    fallEnabled: settings.fallDetectionEnabled,
-    shakeEnabled: settings.shakeSOSEnabled,
-    shakeSensitivity: settings.shakeSensitivity,
+    enabled: !suppressed,
   });
 
   const contextValue = useMemo(
-    () => ({
-      alarmActive,
-      dismissAlarm,
-      isMonitoring,
-      reloadSettings: loadSettings,
-    }),
-    [alarmActive, dismissAlarm, isMonitoring, loadSettings]
+    () => ({ dismissAlarm }),
+    [dismissAlarm]
   );
 
   return (

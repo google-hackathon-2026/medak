@@ -1,53 +1,33 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { Accelerometer } from "expo-sensors";
+import { useEffect, useRef, useCallback } from "react";
+import { DeviceMotion } from "expo-sensors";
 import type { DangerType } from "./types";
-import type { DangerSettings } from "./dangerSettings";
 
-const FREEFALL_THRESHOLD = 0.6;
-const FREEFALL_THRESHOLD_SQ = FREEFALL_THRESHOLD ** 2;
+// Fall detection uses accelerationIncludingGravity:
+// at rest ~1g, freefall ~0g, impact >2g
+const FREEFALL_THRESHOLD_SQ = 0.3 ** 2; // must be genuinely close to 0g
 const FREEFALL_MIN_DURATION = 150;
-const IMPACT_THRESHOLD = 1.8;
-const IMPACT_THRESHOLD_SQ = IMPACT_THRESHOLD ** 2;
-const IMPACT_WINDOW = 1000;
-const SHAKE_AMPLITUDE = 1.2;
+const IMPACT_THRESHOLD_SQ = 2.5 ** 2;
+const IMPACT_WINDOW = 1500;
+
+// Shake detection uses acceleration (gravity removed):
+// at rest ~0, shaking produces clear oscillation
+const SHAKE_AMPLITUDE = 1.5;
 const SHAKE_WINDOW = 2000;
+const SHAKE_REQUIRED = 5;
+
 const COOLDOWN = 30000;
 const UPDATE_INTERVAL = 100;
-
-const SHAKE_COUNTS: Record<DangerSettings["shakeSensitivity"], number> = {
-  LOW: 7,
-  MEDIUM: 5,
-  HIGH: 3,
-};
 
 interface Options {
   onDangerDetected: (type: DangerType) => void;
   enabled: boolean;
-  fallEnabled?: boolean;
-  shakeEnabled?: boolean;
-  shakeSensitivity?: DangerSettings["shakeSensitivity"];
 }
 
 export function useDangerDetection(options: Options) {
-  const {
-    onDangerDetected,
-    enabled,
-    fallEnabled = true,
-    shakeEnabled = true,
-    shakeSensitivity = "MEDIUM",
-  } = options;
-  const fallEnabledRef = useRef(fallEnabled);
-  fallEnabledRef.current = fallEnabled;
-  const shakeEnabledRef = useRef(shakeEnabled);
-  shakeEnabledRef.current = shakeEnabled;
-
-  const [isMonitoring, setIsMonitoring] = useState(false);
-  const [sensorAvailable, setSensorAvailable] = useState<boolean | null>(null);
-  const lastTrigger = useRef(0);
+  const { onDangerDetected, enabled } = options;
   const callbackRef = useRef(onDangerDetected);
   callbackRef.current = onDangerDetected;
-  const sensitivityRef = useRef(shakeSensitivity);
-  sensitivityRef.current = shakeSensitivity;
+  const lastTrigger = useRef(0);
 
   const fallState = useRef<{
     phase: "IDLE" | "FREEFALL" | "IMPACT_WINDOW";
@@ -61,60 +41,48 @@ export function useDangerDetection(options: Options) {
     events: number[];
   }>({ lastMagnitude: null, lastDelta: null, events: [] });
 
-  const trigger = useCallback(
-    (type: DangerType) => {
-      const now = Date.now();
-      if (now - lastTrigger.current < COOLDOWN) return;
-      lastTrigger.current = now;
+  const trigger = useCallback((type: DangerType) => {
+    const now = Date.now();
+    if (now - lastTrigger.current < COOLDOWN) return;
+    lastTrigger.current = now;
 
-      fallState.current = {
-        phase: "IDLE",
-        freefallStart: null,
-        freefallEnd: null,
-      };
-      shakeState.current = {
-        lastMagnitude: null,
-        lastDelta: null,
-        events: [],
-      };
+    fallState.current = { phase: "IDLE", freefallStart: null, freefallEnd: null };
+    shakeState.current = { lastMagnitude: null, lastDelta: null, events: [] };
 
-      callbackRef.current(type);
-    },
-    []
-  );
+    callbackRef.current(type);
+  }, []);
 
   useEffect(() => {
-    if (!enabled) {
-      setIsMonitoring(false);
-      return;
-    }
+    if (!enabled) return;
 
-    let subscription: ReturnType<typeof Accelerometer.addListener> | null =
-      null;
+    let subscription: ReturnType<typeof DeviceMotion.addListener> | null = null;
+    let cancelled = false;
 
     (async () => {
-      const available = await Accelerometer.isAvailableAsync();
-      setSensorAvailable(available);
-      if (!available) return;
+      const available = await DeviceMotion.isAvailableAsync();
+      if (!available || cancelled) return;
 
-      Accelerometer.setUpdateInterval(UPDATE_INTERVAL);
-      setIsMonitoring(true);
+      DeviceMotion.setUpdateInterval(UPDATE_INTERVAL);
 
-      subscription = Accelerometer.addListener(({ x, y, z }) => {
+      subscription = DeviceMotion.addListener((data) => {
+        const g = data.accelerationIncludingGravity;
+        const a = data.acceleration;
+        if (!g && !a) return;
+
         const now = Date.now();
-        const magnitudeSq = x * x + y * y + z * z;
 
-        // Fall detection (squared magnitudes avoid sqrt)
-        if (fallEnabledRef.current) {
+        // Fall detection: accelerationIncludingGravity (at rest ~1g, freefall ~0g)
+        if (g) {
+          const gMagSq = g.x * g.x + g.y * g.y + g.z * g.z;
           const fs = fallState.current;
 
           if (fs.phase === "IDLE") {
-            if (magnitudeSq < FREEFALL_THRESHOLD_SQ) {
+            if (gMagSq < FREEFALL_THRESHOLD_SQ) {
               fs.phase = "FREEFALL";
               fs.freefallStart = now;
             }
           } else if (fs.phase === "FREEFALL") {
-            if (magnitudeSq >= FREEFALL_THRESHOLD_SQ) {
+            if (gMagSq >= FREEFALL_THRESHOLD_SQ) {
               const duration = now - (fs.freefallStart ?? now);
               if (duration >= FREEFALL_MIN_DURATION) {
                 fs.phase = "IMPACT_WINDOW";
@@ -125,7 +93,7 @@ export function useDangerDetection(options: Options) {
               }
             }
           } else if (fs.phase === "IMPACT_WINDOW") {
-            if (magnitudeSq > IMPACT_THRESHOLD_SQ) {
+            if (gMagSq > IMPACT_THRESHOLD_SQ) {
               trigger("FALL");
               return;
             }
@@ -137,10 +105,10 @@ export function useDangerDetection(options: Options) {
           }
         }
 
-        // Shake detection
-        if (shakeEnabledRef.current) {
+        // Shake detection: acceleration without gravity (at rest ~0)
+        if (a) {
+          const magnitude = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
           const ss = shakeState.current;
-          const magnitude = Math.sqrt(magnitudeSq);
 
           if (ss.lastMagnitude !== null) {
             const delta = magnitude - ss.lastMagnitude;
@@ -157,8 +125,7 @@ export function useDangerDetection(options: Options) {
               ss.events.shift();
             }
 
-            const required = SHAKE_COUNTS[sensitivityRef.current];
-            if (ss.events.length >= required) {
+            if (ss.events.length >= SHAKE_REQUIRED) {
               ss.events = [];
               trigger("SHAKE");
               return;
@@ -172,10 +139,8 @@ export function useDangerDetection(options: Options) {
     })();
 
     return () => {
+      cancelled = true;
       subscription?.remove();
-      setIsMonitoring(false);
     };
   }, [enabled, trigger]);
-
-  return { isMonitoring, sensorAvailable };
 }

@@ -7,7 +7,7 @@ import {
   Surface,
   TouchableRipple,
   Icon,
-  Button,
+  IconButton,
   ActivityIndicator,
 } from "react-native-paper";
 import * as Haptics from "expo-haptics";
@@ -67,21 +67,6 @@ export default function HomeScreen() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
-      <View style={styles.header}>
-        <Text
-          variant="displayMedium"
-          style={[styles.title, { color: theme.colors.onBackground }]}
-        >
-          MEDAK
-        </Text>
-        <Text
-          variant="titleMedium"
-          style={{ color: theme.colors.onSurfaceVariant, textAlign: "center" }}
-        >
-          Hitna pomoć za gluve i neme osobe
-        </Text>
-      </View>
-
       <View style={styles.grid}>
         {EMERGENCY_OPTIONS.map((option) => (
           <Surface
@@ -122,16 +107,13 @@ export default function HomeScreen() {
         ))}
       </View>
 
-      <Button
-        mode="text"
+      <IconButton
         icon="cog"
         onPress={() => router.push("/settings")}
-        textColor={theme.colors.onSurfaceVariant}
+        iconColor={theme.colors.onSurfaceVariant}
         style={styles.settingsButton}
         accessibilityLabel="Podešavanja"
-      >
-        Podešavanja
-      </Button>
+      />
     </SafeAreaView>
   );
 }
@@ -141,14 +123,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
     justifyContent: "center",
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 48,
-  },
-  title: {
-    fontWeight: "900",
-    letterSpacing: 4,
   },
   grid: {
     gap: 16,
@@ -169,7 +143,8 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   settingsButton: {
-    alignSelf: "center",
-    marginTop: 48,
+    position: "absolute",
+    bottom: 32,
+    right: 24,
   },
 });

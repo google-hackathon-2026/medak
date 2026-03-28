@@ -9,11 +9,7 @@ const KEYS = {
 } as const;
 
 export const DEFAULT_USER_INFO: UserInfo = {
-  name: "",
-  address: "",
-  phone: "",
-  medicalNotes: "",
-  disability: "",
+  personalInfo: "",
 };
 
 export async function getUserInfo(): Promise<UserInfo> {
