@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { getUserInfo, saveUserInfo, DEFAULT_USER_INFO } from "../lib/storage";
 import { useAppTheme } from "../lib/useAppTheme";
+import { STRINGS } from "../lib/strings";
 import type { UserInfo } from "../lib/types";
 
 export default function SettingsScreen() {
@@ -40,7 +41,7 @@ export default function SettingsScreen() {
         variant="headlineMedium"
         style={[styles.title, { color: theme.colors.onBackground }]}
       >
-        Podešavanja
+        {STRINGS.settings_title}
       </Text>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
@@ -48,25 +49,25 @@ export default function SettingsScreen() {
           variant="bodyLarge"
           style={{ color: theme.colors.onSurfaceVariant, marginBottom: 24 }}
         >
-          Ovi podaci se automatski šalju hitnim službama prilikom poziva.
+          {STRINGS.settings_description}
         </Text>
 
         <TextInput
           mode="outlined"
-          label="Lični podaci"
+          label={STRINGS.personal_data}
           value={info.personalInfo}
           onChangeText={(v) => {
             setInfo((prev) => ({ ...prev, personalInfo: v }));
             setSaved(false);
           }}
-          placeholder={"Ime i prezime, adresa, sprat, stan,\nbroj telefona, medicinske napomene..."}
+          placeholder={STRINGS.personal_data_placeholder}
           multiline
           numberOfLines={8}
           style={[styles.input, { backgroundColor: theme.colors.surface }]}
           outlineColor={theme.colors.outline}
           activeOutlineColor={theme.colors.secondary}
           textColor={theme.colors.onSurface}
-          accessibilityLabel="Lični podaci"
+          accessibilityLabel={STRINGS.personal_data}
         />
 
         <Button
@@ -78,9 +79,9 @@ export default function SettingsScreen() {
           contentStyle={styles.saveButtonContent}
           labelStyle={styles.saveButtonLabel}
           style={styles.saveButton}
-          accessibilityLabel="Sačuvaj podešavanja"
+          accessibilityLabel={STRINGS.save_settings}
         >
-          {saved ? "Sačuvano" : "Sačuvaj"}
+          {saved ? STRINGS.saved : STRINGS.save}
         </Button>
       </ScrollView>
 
@@ -91,7 +92,7 @@ export default function SettingsScreen() {
         action={{ label: "OK", onPress: () => setSnackbarVisible(false) }}
         style={{ backgroundColor: theme.custom.success }}
       >
-        Vaši podaci su sačuvani.
+        {STRINGS.data_saved}
       </Snackbar>
     </SafeAreaView>
   );

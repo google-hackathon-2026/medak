@@ -162,7 +162,7 @@ class SessionOrchestrator:
             await self.broadcast(self.session_id, {
                 "type": "RESOLVED",
                 "eta_minutes": snap.eta_minutes or 0,
-                "message": "Pomoć je na putu!",
+                "message": "Help is on the way!",
             })
             logger.info("Session %s: LIVE_CALL -> RESOLVED", self.session_id)
             return "RESOLVED"
@@ -175,7 +175,7 @@ class SessionOrchestrator:
             await self.broadcast(self.session_id, {
                 "type": "RESOLVED",
                 "eta_minutes": snap.eta_minutes or 0,
-                "message": "Poziv završen.",
+                "message": "Call completed.",
             })
             logger.info("Session %s: LIVE_CALL -> RESOLVED (call completed)", self.session_id)
             return "RESOLVED"

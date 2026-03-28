@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="sr">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -328,7 +328,7 @@
     </div>
 
     <div class="eta-banner" id="etaBanner">
-      ✅ POMOĆ JE NA PUTU — ETA: <span id="etaMinutes">?</span> min
+      ✅ HELP IS ON THE WAY — ETA: <span id="etaMinutes">?</span> min
     </div>
   </div>
 </div>
@@ -492,22 +492,22 @@
     }
   }
 
-  // Infer checklist fields from transcript messages
+  // Infer checklist fields from transcript messages (English + Serbian fallback)
   function inferChecklist(text) {
     const lower = text.toLowerCase();
-    if (lower.includes('lokacija potvrđena') || lower.includes('adresa:') || lower.includes('bulevar')) {
+    if (lower.includes('location confirmed') || lower.includes('lokacija potvrđena') || lower.includes('adresa:') || lower.includes('address:') || lower.includes('bulevar')) {
       setCheck('chk-location', true);
     }
-    if (lower.includes('medicinski') || lower.includes('požar') || lower.includes('emergency_type') || lower.includes('hitan slučaj detektovan')) {
+    if (lower.includes('medical') || lower.includes('fire emergency') || lower.includes('emergency detected') || lower.includes('medicinski') || lower.includes('požar') || lower.includes('emergency_type') || lower.includes('hitan slučaj detektovan')) {
       setCheck('chk-emergency', true);
     }
-    if (lower.includes('pri svesti') || lower.includes('conscious') || lower.includes('svesti')) {
+    if (lower.includes('conscious') || lower.includes('pri svesti') || lower.includes('svesti')) {
       setCheck('chk-conscious', true);
     }
-    if (lower.includes('diše') || lower.includes('breathing') || lower.includes('disanje')) {
+    if (lower.includes('breathing') || lower.includes('diše') || lower.includes('disanje')) {
       setCheck('chk-breathing', true);
     }
-    if (lower.includes('žrtva') || lower.includes('victim') || lower.includes('jedna žrtva')) {
+    if (lower.includes('victim') || lower.includes('žrtva') || lower.includes('jedna žrtva')) {
       setCheck('chk-victims', true);
     }
   }

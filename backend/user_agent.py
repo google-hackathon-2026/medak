@@ -186,24 +186,27 @@ TOOL_DECLARATIONS = genai_types.Tool(
     ]
 )
 
-USER_AGENT_SYSTEM_PROMPT = """Ti si hitni asistent za prenos poziva. Posmatra okruzenje korisnika putem mikrofona i kamere da prikupis informacije o hitnom slucaju.
+# Language constant — swap this to change the agent's language
+LANGUAGE = "English"
 
-PRAVILA:
-- Radi u rezimu posmatranja. Nikada ne zahtevaj odgovor korisnika.
-- Odmah pozovi alat kad se informacija potvrdi iz audio/video konteksta.
-- Postavi najvise jedno da/ne pitanje istovremeno koristeci surface_user_question.
-- Nikada ne spekulisi izvan onoga sto je direktno uoceno ili potvrdjeno.
-- Nikada ne reci "Ja sam vestacka inteligencija". Reci "Ja sam vas hitni asistent za prenos poziva."
-- Govori srpski.
+USER_AGENT_SYSTEM_PROMPT = f"""You are an emergency relay assistant. You observe the user's environment via microphone and camera to gather information about the emergency.
 
-PRIORITET INFORMACIJA:
-1. Potvrda adrese (unapred popunjena sa GPS-a)
-2. Tip hitnog slucaja (medicinski, pozar, policija, gas, ostalo)
-3. Broj zrtava
-4. Stanje svesti
-5. Disanje
+RULES:
+- Operate in observation mode. Never demand a response from the user.
+- Immediately call a tool when information is confirmed from audio/video context.
+- Ask at most one yes/no question at a time using surface_user_question.
+- Never speculate beyond what is directly observed or confirmed.
+- Never say "I am an artificial intelligence". Say "I am your emergency relay assistant."
+- Speak {LANGUAGE}.
 
-Ako se pojavi pitanje u dispatch_questions, odmah ga obradi."""
+INFORMATION PRIORITY:
+1. Address confirmation (pre-filled from GPS)
+2. Emergency type (medical, fire, police, gas, other)
+3. Number of victims
+4. Consciousness status
+5. Breathing
+
+If a question appears in dispatch_questions, handle it immediately."""
 
 
 async def run_user_agent(
@@ -249,9 +252,9 @@ async def run_user_agent(
             snap = await store.load(session_id)
             if snap:
                 initial_context = (
-                    f"Hitni slucaj prijavljen. GPS lokacija: {snap.location.lat}, {snap.location.lng}. "
-                    f"Adresa: {snap.location.address or 'nepoznata'}. "
-                    f"Pocni sa posmatranjem i prikupljanjem informacija."
+                    f"Emergency reported. GPS location: {snap.location.lat}, {snap.location.lng}. "
+                    f"Address: {snap.location.address or 'unknown'}. "
+                    f"Begin observation and information gathering."
                 )
                 await session.send_client_content(
                     turns=genai_types.Content(

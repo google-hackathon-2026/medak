@@ -13,6 +13,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { useAppTheme } from "../lib/useAppTheme";
 import { initiateSOSCall, LOCATION_UNAVAILABLE } from "../lib/sosFlow";
+import { STRINGS } from "../lib/strings";
 import type { EmergencyType } from "../lib/types";
 
 const EMERGENCY_OPTIONS: {
@@ -20,9 +21,9 @@ const EMERGENCY_OPTIONS: {
   label: string;
   icon: string;
 }[] = [
-  { type: "AMBULANCE", label: "Hitna pomoć", icon: "ambulance" },
-  { type: "POLICE", label: "Policija", icon: "police-badge" },
-  { type: "FIRE", label: "Vatrogasci", icon: "fire-truck" },
+  { type: "AMBULANCE", label: STRINGS.emergency_ambulance, icon: "ambulance" },
+  { type: "POLICE", label: STRINGS.emergency_police, icon: "police-badge" },
+  { type: "FIRE", label: STRINGS.emergency_fire, icon: "fire-truck" },
 ];
 
 export default function HomeScreen() {
@@ -52,9 +53,9 @@ export default function HomeScreen() {
       } catch (err) {
         const message =
           err instanceof Error && err.message === LOCATION_UNAVAILABLE
-            ? "Nije moguće dobiti lokaciju. Proverite dozvole."
-            : "Nije moguće pokrenuti sesiju. Proverite internet konekciju.";
-        Alert.alert("Greška", message);
+            ? STRINGS.error_location
+            : STRINGS.error_session;
+        Alert.alert(STRINGS.error_title, message);
       } finally {
         triggeringRef.current = false;
         setTriggering(null);
@@ -112,7 +113,7 @@ export default function HomeScreen() {
         onPress={() => router.push("/settings")}
         iconColor={theme.colors.onSurfaceVariant}
         style={styles.settingsButton}
-        accessibilityLabel="Podešavanja"
+        accessibilityLabel={STRINGS.settings}
       />
     </SafeAreaView>
   );

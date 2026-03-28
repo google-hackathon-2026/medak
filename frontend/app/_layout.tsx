@@ -25,7 +25,7 @@ export default function RootLayout() {
           <Stack.Screen
             name="session"
             options={{
-              title: "Hitna sesija",
+              title: "Emergency Session",
               headerBackVisible: false,
               gestureEnabled: false,
             }}

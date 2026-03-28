@@ -20,25 +20,45 @@ logger = logging.getLogger(__name__)
 
 BroadcastFn = Callable[[str, dict], Awaitable[None]]
 
+# ---------------------------------------------------------------------------
+# Localisable strings — swap this dict to change the demo language
+# ---------------------------------------------------------------------------
+STRINGS = {
+    "analyzing_env": "Analyzing environment... Detecting person on the floor.",
+    "medical_detected": "Medical emergency detected.",
+    "free_text_scene": "Elderly woman lying on kitchen floor, possible stroke",
+    "location_confirmed": "Location confirmed: Bulevar kralja Aleksandra 73.",
+    "clinical_summary": "One victim. Conscious — responds to touch. Breathing irregularly.",
+    "stroke_signs": "Detecting signs of stroke: confusion, facial asymmetry.",
+    "free_text_stroke": "Victim showing signs of confusion, slurred speech, facial asymmetry",
+    "dispatcher_answer_prefix": "Response to dispatcher's question",
+    "checking_with_caller": "Checking with the caller, one moment.",
+    # Q&A answers keyed by the English dispatch questions
+    "answer_conscious": "Yes, conscious but confused and has slurred speech.",
+    "answer_breathing": "Yes, breathing but irregularly.",
+    "answer_age": "Approximately 70 years old.",
+    "answer_medication": "Unknown, checking with the caller.",
+}
+
 # Each entry: (delay_seconds, action_type, action_args, transcript_text)
 STROKE_NEIGHBOR_SCRIPT: list[tuple] = [
     (1.0, "transcript", None,
-     "Analiziram okolinu... Detektujem osobu na podu."),
+     STRINGS["analyzing_env"]),
 
     (2.5, "tool_call", ("set_emergency_type", {"emergency_type": "MEDICAL"}),
-     "Medicinski hitan slučaj detektovan."),
+     STRINGS["medical_detected"]),
 
-    (4.0, "tool_call", ("append_free_text", {"utterance": "Starija žena leži na podu kuhinje, moguć moždani udar"}),
+    (4.0, "tool_call", ("append_free_text", {"utterance": STRINGS["free_text_scene"]}),
      None),
 
     (5.5, "tool_call", ("confirm_location", {"address": "Bulevar kralja Aleksandra 73, Beograd"}),
-     "Lokacija potvrđena: Bulevar kralja Aleksandra 73."),
+     STRINGS["location_confirmed"]),
 
     (7.0, "tool_call", ("set_clinical_fields", {"victim_count": 1, "conscious": True, "breathing": True}),
-     "Jedna žrtva. Pri svesti — reaguje na dodir. Diše nepravilno."),
+     STRINGS["clinical_summary"]),
 
-    (8.5, "tool_call", ("append_free_text", {"utterance": "Žrtva pokazuje znake konfuzije, otežan govor, asimetrija lica"}),
-     "Detektujem znake moždanog udara: konfuzija, asimetrija lica."),
+    (8.5, "tool_call", ("append_free_text", {"utterance": STRINGS["free_text_stroke"]}),
+     STRINGS["stroke_signs"]),
 ]
 
 SCENARIOS: dict[str, list[tuple]] = {
@@ -47,10 +67,10 @@ SCENARIOS: dict[str, list[tuple]] = {
 
 # Hardcoded answers for known dispatch questions
 ANSWER_MAP: dict[str, str] = {
-    "Da li je pacijent pri svesti?": "Da, pri svesti je ali je konfuzna i ima otežan govor.",
-    "Da li pacijent diše?": "Da, diše ali nepravilno.",
-    "Koliko ima godina?": "Oko 70 godina.",
-    "Da li uzima neke lekove?": "Nije poznato, proveravam sa pozivaocem.",
+    "Is the patient conscious?": STRINGS["answer_conscious"],
+    "Is the patient breathing?": STRINGS["answer_breathing"],
+    "How old is the patient?": STRINGS["answer_age"],
+    "Is the patient taking any medication?": STRINGS["answer_medication"],
 }
 
 
@@ -113,13 +133,13 @@ async def run_demo_user_agent(
             # Brief "checking" delay for visual effect
             await asyncio.sleep(1.5)
 
-            answer = ANSWER_MAP.get(pending, "Proveravam sa pozivaocem, jedan momenat.")
+            answer = ANSWER_MAP.get(pending, STRINGS["checking_with_caller"])
             await tools.answer_dispatch_question(pending, answer)
 
             await broadcast(session_id, {
                 "type": "transcript",
                 "speaker": "assistant",
-                "text": f"Odgovor na pitanje dispečera: {answer}",
+                "text": f"{STRINGS['dispatcher_answer_prefix']}: {answer}",
             })
             logger.info("Demo User Agent answered question: %s -> %s", pending, answer)
 

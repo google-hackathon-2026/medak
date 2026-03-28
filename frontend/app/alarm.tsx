@@ -6,6 +6,7 @@ import * as Haptics from "expo-haptics";
 import { useDangerDetectionContext } from "../lib/DangerDetectionContext";
 import { initiateSOSCall } from "../lib/sosFlow";
 import { useAppTheme } from "../lib/useAppTheme";
+import { STRINGS } from "../lib/strings";
 import type { DangerType } from "../lib/types";
 
 const COUNTDOWN_SECONDS = 15;
@@ -67,7 +68,7 @@ export default function AlarmScreen() {
       });
     } catch {
       setCalling(false);
-      setError("Poziv nije uspeo. Pokušajte ručno.");
+      setError(STRINGS.call_failed);
     }
   }, [router, dismissAlarm]);
 
@@ -118,7 +119,7 @@ export default function AlarmScreen() {
           labelStyle={styles.cancelLabel}
           style={styles.cancelButton}
         >
-          POČETNI EKRAN
+          {STRINGS.home_screen}
         </Button>
       </View>
     );
@@ -133,14 +134,14 @@ export default function AlarmScreen() {
 
         <Text variant="headlineSmall" style={[styles.typeText, { color: theme.colors.onPrimary }]}>
           {dangerType === "FALL"
-            ? "Detektovan mogući pad"
-            : "SOS aktiviran"}
+            ? STRINGS.fall_detected
+            : STRINGS.sos_activated}
         </Text>
 
         <Text variant="titleMedium" style={[styles.subText, { color: theme.colors.onPrimary }]}>
           {calling
-            ? "Pozivanje hitne pomoći..."
-            : `Poziv hitnoj pomoći za ${seconds} sek...`}
+            ? STRINGS.calling_emergency
+            : STRINGS.calling_emergency_countdown.replace("{seconds}", String(seconds))}
         </Text>
       </View>
 
@@ -154,9 +155,9 @@ export default function AlarmScreen() {
             contentStyle={styles.cancelContent}
             labelStyle={styles.cancelLabel}
             style={styles.cancelButton}
-            accessibilityLabel="Otkaži alarm"
+            accessibilityLabel={STRINGS.cancel_alarm}
           >
-            OTKAŽI
+            {STRINGS.cancel}
           </Button>
         </View>
       )}
