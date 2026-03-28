@@ -334,7 +334,7 @@ function IntakeView({ theme }: ThemeProp) {
     <View style={styles.centeredView}>
       <ActivityIndicator
         size="large"
-        color={theme.custom.sosPrimary}
+        color={theme.custom.AMBULANCE}
         style={{ marginBottom: 24 }}
       />
       <Text
@@ -402,7 +402,7 @@ function TriageView({
       </View>
 
       <View style={styles.micIndicator}>
-        <Text variant="labelMedium" style={{ color: theme.custom.sosPrimary }}>
+        <Text variant="labelMedium" style={{ color: theme.custom.AMBULANCE }}>
           ● Mikrofon aktivan
         </Text>
       </View>

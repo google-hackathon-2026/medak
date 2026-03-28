@@ -1,7 +1,9 @@
 import { triggerSOS } from "./api";
-import { getCurrentLocation, reverseGeocode } from "./location";
+import { getCurrentLocation } from "./location";
 import { getDeviceId, getUserId } from "./storage";
 import type { EmergencyType } from "./types";
+
+export const LOCATION_UNAVAILABLE = "LOCATION_UNAVAILABLE";
 
 export interface SOSResult {
   sessionId: string;
@@ -25,22 +27,19 @@ export async function initiateSOSCall(options: {
   ]);
 
   if (requireLocation && !location) {
-    throw new Error("LOCATION_UNAVAILABLE");
+    throw new Error(LOCATION_UNAVAILABLE);
   }
 
   const lat = location?.latitude ?? 0;
   const lng = location?.longitude ?? 0;
 
-  const [response] = await Promise.all([
-    triggerSOS({
-      emergency_type: emergencyType,
-      lat,
-      lng,
-      user_id: userId,
-      device_id: deviceId,
-    }),
-    reverseGeocode(lat, lng).catch(() => null),
-  ]);
+  const response = await triggerSOS({
+    emergency_type: emergencyType,
+    lat,
+    lng,
+    user_id: userId,
+    device_id: deviceId,
+  });
 
   return { sessionId: response.session_id };
 }

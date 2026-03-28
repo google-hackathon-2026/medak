@@ -1,6 +1,6 @@
 export type DangerType = "FALL" | "SHAKE";
 
-// Session phases (design doc section 2.3)
+// Session phases
 export type SessionPhase =
   | "INTAKE"
   | "TRIAGE"
