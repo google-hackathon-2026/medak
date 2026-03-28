@@ -233,9 +233,11 @@ def create_app(
     @app.post("/api/session/{session_id}/twilio/status")
     async def twilio_status(
         session_id: str,
-        CallStatus: str = Form(""),
+        CallStatus: str = Form(""),  # must match Twilio's exact field name casing
     ) -> dict:
         from snapshot import CallStatus as CS
+        # "queued" and "ringing" are intentionally omitted — they don't map to
+        # a meaningful internal state change; treated as no-ops.
         STATUS_MAP = {
             "in-progress": "CONNECTED",
             "completed": "DROPPED",
