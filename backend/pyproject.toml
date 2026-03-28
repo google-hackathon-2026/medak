@@ -10,6 +10,8 @@ dependencies = [
     "redis[hiredis]>=5.2",
     "google-genai>=1.10.0",
     "twilio>=9.3",
+    "audioop-lts>=0.2.1",
+    "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]
