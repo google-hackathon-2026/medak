@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { PaperProvider } from "react-native-paper";
 import theme from "../lib/theme";
+import { DangerDetectionProvider } from "../lib/DangerDetectionContext";
 
 const screenOptions = {
   headerStyle: { backgroundColor: theme.colors.background },
@@ -14,25 +15,32 @@ export default function RootLayout() {
   return (
     <PaperProvider theme={theme}>
       <StatusBar style="light" />
-      <Stack screenOptions={screenOptions}>
-        <Stack.Screen
-          name="index"
-          options={{ title: "Medak", headerShown: false }}
-        />
-        <Stack.Screen
-          name="emergency"
-          options={{ title: "Opis hitnog slučaja" }}
-        />
-        <Stack.Screen
-          name="call"
-          options={{
-            title: "Poziv u toku",
-            headerBackVisible: false,
-            gestureEnabled: false,
-          }}
-        />
-        <Stack.Screen name="settings" options={{ title: "Podešavanja" }} />
-      </Stack>
+      <DangerDetectionProvider>
+        <Stack screenOptions={screenOptions}>
+          <Stack.Screen
+            name="index"
+            options={{ title: "Medak", headerShown: false }}
+          />
+          <Stack.Screen
+            name="session"
+            options={{
+              title: "Hitna sesija",
+              headerBackVisible: false,
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen name="settings" options={{ title: "Podešavanja" }} />
+          <Stack.Screen
+            name="alarm"
+            options={{
+              presentation: "fullScreenModal",
+              headerShown: false,
+              gestureEnabled: false,
+              animation: "fade",
+            }}
+          />
+        </Stack>
+      </DangerDetectionProvider>
     </PaperProvider>
   );
 }

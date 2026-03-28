@@ -1,9 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { UserInfo, CallHistoryEntry } from "./types";
+import * as Crypto from "expo-crypto";
+import { UserInfo } from "./types";
 
 const KEYS = {
   USER_INFO: "medak_user_info",
-  CALL_HISTORY: "medak_call_history",
+  DEVICE_ID: "medak_device_id",
+  USER_ID: "medak_user_id",
 } as const;
 
 export const DEFAULT_USER_INFO: UserInfo = {
@@ -24,18 +26,14 @@ export async function saveUserInfo(info: UserInfo): Promise<void> {
   await AsyncStorage.setItem(KEYS.USER_INFO, JSON.stringify(info));
 }
 
-export async function getCallHistory(): Promise<CallHistoryEntry[]> {
-  const raw = await AsyncStorage.getItem(KEYS.CALL_HISTORY);
-  if (!raw) return [];
-  return JSON.parse(raw);
+async function getOrCreateId(key: string): Promise<string> {
+  let id = await AsyncStorage.getItem(key);
+  if (!id) {
+    id = Crypto.randomUUID();
+    await AsyncStorage.setItem(key, id);
+  }
+  return id;
 }
 
-export async function addCallToHistory(entry: CallHistoryEntry): Promise<void> {
-  const history = await getCallHistory();
-  history.unshift(entry);
-  // Keep last 50 entries
-  await AsyncStorage.setItem(
-    KEYS.CALL_HISTORY,
-    JSON.stringify(history.slice(0, 50))
-  );
-}
+export const getDeviceId = () => getOrCreateId(KEYS.DEVICE_ID);
+export const getUserId = () => getOrCreateId(KEYS.USER_ID);

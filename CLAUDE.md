@@ -1,23 +1,23 @@
 # Medak
 
 ## Project Overview
-Google Hackathon project. Emergency accessibility app for deaf/mute people in Serbia to contact emergency services ("hitna pomoć") via AI agents. The user describes their emergency through a simple mobile UI, and an AI agent calls emergency services on their behalf — speaking and listening via Google Cloud TTS/STT, with Gemini orchestrating the conversation.
+Google Hackathon project. Emergency accessibility app for deaf/mute people in Serbia to contact emergency services (112) via AI agents. The system uses two Gemini 2.0 Flash Live agents coordinated by a deterministic orchestrator. When the user presses the SOS button, the system passively gathers emergency details via microphone and camera, then calls 112 on their behalf via Twilio VoIP — speaking fluently to the dispatcher while relaying responses back to the user in real time.
 
 ## User Flow
-1. User opens app → sees large emergency type buttons (Ambulance, Police, Fire)
-2. Selects type → GPS location captured automatically
-3. Describes emergency → quick-select chips in Serbian + free text + optional photo
-4. Taps "POZOVI" (CALL) → backend receives data + GPS
-5. AI calls emergency services → Gemini composes briefing → Twilio places call → Cloud TTS speaks → Cloud STT transcribes operator → Gemini responds → loop
-6. User sees live transcript on phone via SSE
-7. If AI needs more info → app prompts user to type, AI relays it
-8. Call ends → summary displayed
+1. User opens app -> sees large SOS button
+2. Press-and-hold SOS for 1.5s -> GPS captured, payload sent to backend
+3. **INTAKE**: Session initialised, snapshot created in Redis (<2s)
+4. **TRIAGE**: User Agent passively observes via mic + camera. Optional yes/no prompts on screen. Up to 10 seconds.
+5. Confidence threshold (0.85) reached OR 10s timeout -> transition to LIVE_CALL
+6. **LIVE_CALL**: Dispatch Agent calls emergency services via Twilio VoIP, speaks on behalf of user
+7. User sees live transcript via WebSocket. If operator asks something the AI can't answer, User Agent prompts the user.
+8. **RESOLVED**: Dispatch confirmed, ETA displayed. OR **FAILED**: Red screen with manual instructions + SMS fallback.
 
 ## Team
 - **Branko** — Frontend (`frontend/`)
 - **Filip** — Frontend (`frontend/`)
 - **Milan Doslic** — TBD
-- **Milan Jovanovic** — Backend (language TBD)
+- **Milan Jovanovic** — Backend (`backend/`)
 - **Boris Antonijev** — TBD
 
 ## Collaboration Rules
@@ -25,70 +25,108 @@ Google Hackathon project. Emergency accessibility app for deaf/mute people in Se
 - If frontend needs something from backend/other services, generate a ready-to-send prompt to forward to the relevant teammate.
 
 ## Architecture
-- **No database.** All persistence is via AsyncStorage (React Native). Never suggest DB solutions.
-- Backend should be stateless or use in-memory/file-based approaches if needed.
-- **Google-first:** Use Google Cloud services where possible (Gemini, Cloud TTS, Cloud STT).
-- **Twilio** for telephony (outbound voice calls) — Google has no equivalent product.
+- **Two Gemini 2.0 Flash Live agents**: User Agent (passive triage via mic/camera) + Dispatch Agent (voice call to 112 via Twilio VoIP)
+- **Deterministic orchestrator** (not an LLM) manages phase transitions based on confidence score
+- **Redis** for shared state (EmergencySnapshot — versioned JSON, 1-hour TTL)
+- **No PostgreSQL.** Audit logging is deferred post-hackathon.
+- **Google-first:** Gemini Live for voice + vision (not separate Cloud TTS/STT)
+- **Twilio** for telephony (VoIP outbound calls) — Google has no equivalent product
+
+## Session Phases
+
+| Phase | Description |
+|-------|-------------|
+| INTAKE | SOS received. GPS and device data parsed. Snapshot initialised in Redis. <2 seconds. |
+| TRIAGE | User Agent active. Passively gathers info from mic audio and camera feed. Optional yes/no prompts. Up to 10 seconds. |
+| LIVE_CALL | Both agents active. Dispatch Agent connected to 112. User Agent fields operator questions relayed through snapshot. |
+| RESOLVED | Dispatch confirmed. ETA written to snapshot. User notified. |
+| FAILED | Unrecoverable error after all retries. SMS fallback fired. User instructed to seek manual help. |
 
 ## Structure
-- `frontend/` — React Native (Expo), TypeScript, Expo Router
-- `backend/` — Language TBD (Dockerized), deployed on Cloud Run
+- `frontend/` — React Native (Expo SDK 54), TypeScript, Expo Router
+- `backend/` — Python / FastAPI (Dockerized), deployed on Cloud Run
+- `docs/design-document.md` — Full architecture reference (authoritative)
 
 ## API Contract
 
 ### Endpoints
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/api/calls` | Initiate emergency call |
-| `GET` | `/api/calls/{id}/stream` | SSE stream for live call status |
-| `POST` | `/api/calls/{id}/input` | User provides additional info during call |
-| `GET` | `/api/health` | Cloud Run health check |
+| `POST` | `/api/sos` | Trigger emergency session |
+| `GET` | `/api/session/{id}/status` | Poll session state (WebSocket fallback) |
+| `WSS` | `/api/session/{id}/ws` | WebSocket for real-time audio/video/transcript |
+| `GET` | `/api/health` | Health check |
 
-### POST /api/calls — Request
+### POST /api/sos — Request
 ```json
 {
-  "emergencyType": "AMBULANCE | POLICE | FIRE",
-  "description": "Free text in Serbian",
-  "quickTags": ["TRAFFIC_ACCIDENT", "MULTIPLE_VICTIMS"],
-  "location": { "latitude": 44.8176, "longitude": 20.4633, "accuracy": 15.0 },
-  "userInfo": { "name": "...", "phone": "+381...", "medicalNotes": "...", "disability": "DEAF" },
-  "photoBase64": "optional"
+  "lat": 44.8176,
+  "lng": 20.4633,
+  "address": "Knez Mihailova 5, Beograd",
+  "user_id": "uuid",
+  "device_id": "uuid"
 }
 ```
 
-### POST /api/calls — Response
+### POST /api/sos — Response
 ```json
-{ "callId": "uuid", "status": "INITIATING", "streamUrl": "/api/calls/{uuid}/stream" }
+{ "session_id": "uuid", "status": "TRIAGE" }
 ```
 
-### SSE Stream Events
-```
-event: status     → {"status": "CALLING|CONNECTED|COMPLETED", "message": "..."}
-event: transcript → {"speaker": "AI|OPERATOR", "text": "..."}
-event: needInput  → {"question": "Operator pita da li je pacijent pri svesti?"}
-```
-
-### POST /api/calls/{id}/input — Request
+### GET /api/session/{id}/status — Response
 ```json
-{ "text": "Da, pri svesti je" }
+{
+  "session_id": "uuid",
+  "phase": "TRIAGE",
+  "confidence": 0.65,
+  "call_status": "IDLE",
+  "eta_minutes": null,
+  "snapshot_version": 4
+}
 ```
 
-## AI Agent — Core Call Loop (Backend)
-1. **Gemini API** composes initial emergency briefing in Serbian from user data
-2. **Twilio Programmable Voice** places outbound call to emergency number
-3. **Google Cloud TTS** (voice `sr-RS`) converts AI text → speech, streamed into call
-4. **Google Cloud STT** (language `sr-RS`, telephony model) transcribes operator → text
-5. **Gemini** processes operator's question, generates response (or asks user via SSE `needInput`)
-6. Steps 3-5 loop until call ends
+### WebSocket Protocol (WSS /api/session/{id}/ws)
+
+**Client -> Server:**
+| Message type | Fields |
+|-------------|--------|
+| audio | `{ type: 'audio', data: base64_pcm }` — 16kHz mono PCM |
+| video_frame | `{ type: 'video_frame', data: base64_jpeg }` — ~1-2fps, 640x480 |
+| ping | `{ type: 'ping' }` |
+| user_response | `{ type: 'user_response', response_type: 'TAP'\|'TEXT', value: string }` |
+
+**Server -> Client:**
+| Message type | Fields |
+|-------------|--------|
+| transcript | `{ type: 'transcript', speaker: 'assistant'\|'user', text: string }` |
+| STATUS_UPDATE | `{ type: 'STATUS_UPDATE', phase: string, confidence: float }` |
+| user_question | `{ type: 'user_question', question: string }` — surfaced by User Agent |
+| pong | `{ type: 'pong' }` |
+| RESOLVED | `{ type: 'RESOLVED', eta_minutes: int, message: string }` |
+| FAILED | `{ type: 'FAILED', message: string }` |
+
+## AI Agents (Backend)
+
+### User Agent
+Gemini 2.0 Flash Live session. Observes mic audio + camera feed passively. Extracts emergency type, location confirmation, victim count, consciousness, breathing. Writes to EmergencySnapshot via tool calls. May surface one yes/no question at a time on the mobile UI. Never blocks on user input.
+
+### Dispatch Agent
+Gemini 2.0 Flash Live session connected to 112 operator via Twilio VoIP. Delivers structured emergency brief on connect. Handles operator questions using snapshot data. Queues unanswerable questions for User Agent via cross-agent Q&A flow.
+
+### Orchestrator
+Deterministic Python code (no LLM). Manages phase transitions based on confidence score and timeouts. Handles agent lifecycle, reconnection with exponential backoff (3 attempts), and SMS fallback on total failure.
 
 ### Backend Environment Variables
 ```
-GEMINI_API_KEY
-GOOGLE_APPLICATION_CREDENTIALS
+GOOGLE_API_KEY
+REDIS_URL
 TWILIO_ACCOUNT_SID
 TWILIO_AUTH_TOKEN
-TWILIO_PHONE_NUMBER
-EMERGENCY_NUMBER          ← Team member's phone for demo, NEVER real 194
+TWILIO_FROM_NUMBER
+EMERGENCY_NUMBER              # Team member's phone for demo, NEVER real 112/194
+TRIAGE_TIMEOUT_SECONDS=10
+CONFIDENCE_THRESHOLD=0.85
+RECONNECT_MAX_ATTEMPTS=3
 ```
 
 ## GCP / Deployment
@@ -101,13 +139,15 @@ EMERGENCY_NUMBER          ← Team member's phone for demo, NEVER real 194
 - GitHub secret `GCP_SA_KEY` contains the service account key for deployment.
 
 ## Demo Strategy
-- **NEVER call real emergency number 194.** Use a team member's phone as the "operator."
-- Code must reject "194" as `EMERGENCY_NUMBER` unless explicitly overridden.
-- If Twilio isn't ready: mock call mode with scripted exchange using Gemini + TTS + STT.
+- **NEVER call real emergency number 112/194.** Use a team member's phone as the "operator."
+- Code must reject "112" and "194" as `EMERGENCY_NUMBER` unless explicitly overridden.
+- Simulated dispatch endpoint: a second FastAPI process playing the dispatcher role with scripted responses.
+- If Twilio isn't ready: mock call mode with scripted exchange using Gemini + TTS.
 
 ## Frontend Notes
-- React Native (Expo) with TypeScript and Expo Router
-- Key libs: `expo-location`, `expo-haptics`, `expo-image-picker`
-- AsyncStorage for user info and call history
-- SSE (EventSource) for live call transcript
+- React Native (Expo SDK 54) with TypeScript and Expo Router
+- React Native Paper (Material Design 3) dark theme
+- Key libs: `expo-location`, `expo-haptics`, `expo-av` (mic), `expo-camera` (camera frames), `expo-crypto` (UUID generation)
+- WebSocket (native RN API) for real-time session communication
+- AsyncStorage for user info persistence
 - Accessibility: 48x48px min touch targets, high contrast, large fonts, visual+haptic feedback only, Serbian language

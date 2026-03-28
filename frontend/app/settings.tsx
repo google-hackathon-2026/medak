@@ -1,10 +1,17 @@
 import { useState, useEffect } from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
-import { Text, TextInput, Chip, Button, Snackbar } from "react-native-paper";
+import { Text, TextInput, Chip, Button, Snackbar, Switch, Divider } from "react-native-paper";
 import * as Haptics from "expo-haptics";
 import { UserInfo } from "../lib/types";
 import { getUserInfo, saveUserInfo, DEFAULT_USER_INFO } from "../lib/storage";
 import { useAppTheme } from "../lib/useAppTheme";
+import {
+  DangerSettings,
+  getDangerSettings,
+  saveDangerSettings,
+  DEFAULT_DANGER_SETTINGS,
+} from "../lib/dangerSettings";
+import { useDangerDetectionContext } from "../lib/DangerDetectionContext";
 
 const DISABILITY_OPTIONS: { value: UserInfo["disability"]; label: string }[] = [
   { value: "", label: "Nije navedeno" },
@@ -13,16 +20,33 @@ const DISABILITY_OPTIONS: { value: UserInfo["disability"]; label: string }[] = [
   { value: "DEAF_MUTE", label: "Gluvoća i nemost" },
 ];
 
+const SENSITIVITY_OPTIONS: {
+  value: DangerSettings["shakeSensitivity"];
+  label: string;
+}[] = [
+  { value: "LOW", label: "Niska" },
+  { value: "MEDIUM", label: "Srednja" },
+  { value: "HIGH", label: "Visoka" },
+];
+
 export default function SettingsScreen() {
   const theme = useAppTheme();
   const [info, setInfo] = useState<UserInfo>({ ...DEFAULT_USER_INFO });
+  const [dangerSettings, setDangerSettings] = useState<DangerSettings>({
+    ...DEFAULT_DANGER_SETTINGS,
+  });
   const [saved, setSaved] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const { reloadSettings } = useDangerDetectionContext();
 
   useEffect(() => {
     let cancelled = false;
-    getUserInfo()
-      .then((data) => { if (!cancelled) setInfo(data); })
+    Promise.all([getUserInfo(), getDangerSettings()])
+      .then(([userData, dangerData]) => {
+        if (cancelled) return;
+        setInfo(userData);
+        setDangerSettings(dangerData);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -32,9 +56,21 @@ export default function SettingsScreen() {
     setSaved(false);
   }
 
+  function updateDanger<K extends keyof DangerSettings>(
+    field: K,
+    value: DangerSettings[K]
+  ) {
+    setDangerSettings((prev) => ({ ...prev, [field]: value }));
+    setSaved(false);
+  }
+
   async function handleSave() {
     try {
-      await saveUserInfo(info);
+      await Promise.all([
+        saveUserInfo(info),
+        saveDangerSettings(dangerSettings),
+      ]);
+      await reloadSettings();
       setSaved(true);
       setSnackbarVisible(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -151,6 +187,98 @@ export default function SettingsScreen() {
           accessibilityLabel="Medicinske napomene"
         />
 
+        <Divider style={{ marginVertical: 24, backgroundColor: theme.colors.outline }} />
+
+        <Text
+          variant="titleLarge"
+          style={{
+            color: theme.colors.onBackground,
+            fontWeight: "700",
+            marginBottom: 16,
+          }}
+        >
+          Automatsko otkrivanje opasnosti
+        </Text>
+
+        <View style={styles.switchRow}>
+          <View style={styles.switchTextContainer}>
+            <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }}>
+              Detekcija pada
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Automatski detektuje padove pomoću senzora telefona
+            </Text>
+          </View>
+          <Switch
+            value={dangerSettings.fallDetectionEnabled}
+            onValueChange={(v) => {
+              updateDanger("fallDetectionEnabled", v);
+              Haptics.selectionAsync();
+            }}
+            color={theme.colors.secondary}
+          />
+        </View>
+
+        <View style={styles.switchRow}>
+          <View style={styles.switchTextContainer}>
+            <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }}>
+              Protresanje za SOS
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Protresite telefon snažno za hitni alarm
+            </Text>
+          </View>
+          <Switch
+            value={dangerSettings.shakeSOSEnabled}
+            onValueChange={(v) => {
+              updateDanger("shakeSOSEnabled", v);
+              Haptics.selectionAsync();
+            }}
+            color={theme.colors.secondary}
+          />
+        </View>
+
+        {dangerSettings.shakeSOSEnabled && (
+          <View style={{ marginBottom: 16 }}>
+            <Text
+              variant="labelLarge"
+              style={{
+                color: theme.colors.onSurfaceVariant,
+                marginBottom: 8,
+              }}
+            >
+              Osetljivost protresanja
+            </Text>
+            <View style={styles.chipContainer}>
+              {SENSITIVITY_OPTIONS.map((option) => (
+                <Chip
+                  key={option.value}
+                  mode="flat"
+                  selected={dangerSettings.shakeSensitivity === option.value}
+                  onPress={() => {
+                    updateDanger("shakeSensitivity", option.value);
+                    Haptics.selectionAsync();
+                  }}
+                  selectedColor={theme.colors.onPrimary}
+                  showSelectedCheck
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor:
+                        dangerSettings.shakeSensitivity === option.value
+                          ? theme.colors.secondary
+                          : theme.colors.surfaceVariant,
+                    },
+                  ]}
+                  textStyle={styles.chipText}
+                >
+                  {option.label}
+                </Chip>
+              ))}
+            </View>
+          </View>
+        )}
+
         <Button
           mode="contained"
           icon={saved ? "check" : "content-save"}
@@ -203,6 +331,16 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 16,
     fontWeight: "600",
+  },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    gap: 16,
+  },
+  switchTextContainer: {
+    flex: 1,
   },
   saveButton: {
     borderRadius: 12,

@@ -1,22 +1,91 @@
-export type EmergencyType = "AMBULANCE" | "POLICE" | "FIRE";
+export type DangerType = "FALL" | "SHAKE";
 
-export type QuickTag =
-  | "TRAFFIC_ACCIDENT"
-  | "HEART_ATTACK"
-  | "FALL"
-  | "FIRE_SCENE"
-  | "VIOLENCE"
-  | "BREATHING"
-  | "UNCONSCIOUS"
-  | "MULTIPLE_VICTIMS"
-  | "CHILD";
+// Session phases (design doc section 2.3)
+export type SessionPhase =
+  | "INTAKE"
+  | "TRIAGE"
+  | "LIVE_CALL"
+  | "RESOLVED"
+  | "FAILED";
 
+// Emergency types (design doc EmergencySnapshot)
+export type EmergencyType =
+  | "MEDICAL"
+  | "FIRE"
+  | "POLICE"
+  | "GAS"
+  | "OTHER";
+
+// Dispatch Agent call status
+export type CallStatus =
+  | "IDLE"
+  | "DIALING"
+  | "CONNECTED"
+  | "CONFIRMED"
+  | "DROPPED";
+
+// Location from device
 export interface LocationData {
   latitude: number;
   longitude: number;
   accuracy: number | null;
+  address?: string;
 }
 
+// POST /api/sos request
+export interface SOSRequest {
+  lat: number;
+  lng: number;
+  address?: string;
+  user_id: string;
+  device_id: string;
+}
+
+// POST /api/sos response
+export interface SOSResponse {
+  session_id: string;
+  status: "TRIAGE";
+}
+
+// GET /api/session/{id}/status response
+export interface SessionStatus {
+  session_id: string;
+  phase: SessionPhase;
+  confidence: number;
+  call_status: CallStatus;
+  eta_minutes: number | null;
+  snapshot_version: number;
+}
+
+// WebSocket messages: server -> client
+export type WSMessageFromServer =
+  | { type: "transcript"; speaker: "assistant" | "user"; text: string }
+  | { type: "STATUS_UPDATE"; phase: SessionPhase; confidence: number }
+  | { type: "user_question"; question: string }
+  | { type: "pong" }
+  | { type: "RESOLVED"; eta_minutes: number; message: string }
+  | { type: "FAILED"; message: string };
+
+// WebSocket messages: client -> server
+export type WSMessageToServer =
+  | { type: "audio"; data: string }
+  | { type: "video_frame"; data: string }
+  | { type: "ping" }
+  | {
+      type: "user_response";
+      response_type: "TAP" | "TEXT";
+      value: string;
+    };
+
+// Transcript entry for display
+export interface TranscriptEntry {
+  id: string;
+  speaker: "assistant" | "user";
+  text: string;
+  timestamp: number;
+}
+
+// User info (persisted in AsyncStorage via settings screen)
 export interface UserInfo {
   name: string;
   address: string;
@@ -24,61 +93,3 @@ export interface UserInfo {
   medicalNotes: string;
   disability: "DEAF" | "MUTE" | "DEAF_MUTE" | "";
 }
-
-export interface EmergencyRequest {
-  emergencyType: EmergencyType;
-  description: string;
-  quickTags: QuickTag[];
-  location: LocationData;
-  userInfo: UserInfo;
-  photoBase64?: string;
-}
-
-export interface CallResponse {
-  callId: string;
-  status: "INITIATING";
-  streamUrl: string;
-}
-
-export type CallStatus = "CALLING" | "CONNECTED" | "COMPLETED" | "ERROR";
-
-export interface StatusEvent {
-  status: CallStatus;
-  message: string;
-}
-
-export interface TranscriptEvent {
-  speaker: "AI" | "OPERATOR";
-  text: string;
-}
-
-export interface NeedInputEvent {
-  question: string;
-}
-
-export interface TranscriptEntry {
-  id: string;
-  speaker: "AI" | "OPERATOR" | "USER";
-  text: string;
-  timestamp: number;
-}
-
-export interface CallHistoryEntry {
-  id: string;
-  timestamp: number;
-  emergencyType: EmergencyType;
-  status: CallStatus;
-  transcript: TranscriptEntry[];
-}
-
-export const QUICK_TAG_LABELS: Record<QuickTag, string> = {
-  TRAFFIC_ACCIDENT: "Saobraćajna nesreća",
-  HEART_ATTACK: "Srčani udar",
-  FALL: "Pad",
-  FIRE_SCENE: "Požar",
-  VIOLENCE: "Nasilje",
-  BREATHING: "Problemi sa disanjem",
-  UNCONSCIOUS: "Bez svesti",
-  MULTIPLE_VICTIMS: "Više povređenih",
-  CHILD: "Dete",
-};

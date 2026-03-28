@@ -16,7 +16,8 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Medak needs your location to share it with emergency services.",
-        "NSCameraUsageDescription": "Medak can attach a photo of the emergency scene."
+        "NSCameraUsageDescription": "Medak uses the camera to help the AI understand the emergency scene.",
+        "NSMicrophoneUsageDescription": "Medak uses the microphone to listen to the emergency scene and relay information to emergency services."
       }
     },
     "android": {
@@ -29,7 +30,9 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "CAMERA"
+        "CAMERA",
+        "RECORD_AUDIO",
+        "HIGH_SAMPLING_RATE_SENSORS"
       ]
     },
     "web": {
@@ -42,8 +45,8 @@
         { "locationWhenInUsePermission": "Medak needs your location to share it with emergency services." }
       ],
       [
-        "expo-image-picker",
-        { "cameraPermission": "Medak can attach a photo of the emergency scene." }
+        "expo-camera",
+        { "cameraPermission": "Medak uses the camera to help the AI understand the emergency scene." }
       ]
     ]
   }

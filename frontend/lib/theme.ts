@@ -1,14 +1,19 @@
 import { MD3DarkTheme } from "react-native-paper";
 import type { MD3Theme } from "react-native-paper";
-import type { EmergencyType } from "./types";
 
 export type AppTheme = MD3Theme & {
-  custom: Record<EmergencyType, string> & {
+  custom: {
+    sosPrimary: string;
+    sosActive: string;
+    sosRing: string;
+    triageBackground: string;
+    resolvedBackground: string;
+    failedBackground: string;
+    confidenceBar: string;
     success: string;
     warning: string;
     info: string;
-    bubbleAI: string;
-    bubbleOperator: string;
+    bubbleAssistant: string;
     bubbleUser: string;
     questionHighlight: string;
   };
@@ -59,14 +64,17 @@ const theme: AppTheme = {
     },
   },
   custom: {
-    AMBULANCE: "#dc2626",
-    POLICE: "#2563eb",
-    FIRE: "#ea580c",
+    sosPrimary: "#dc2626",
+    sosActive: "#ff3333",
+    sosRing: "#ff4444",
+    triageBackground: "#1a1a2e",
+    resolvedBackground: "#0a2e0a",
+    failedBackground: "#2e0a0a",
+    confidenceBar: "#22c55e",
     success: "#22c55e",
     warning: "#eab308",
     info: "#3b82f6",
-    bubbleAI: "#1e3a5f",
-    bubbleOperator: "#3f3f46",
+    bubbleAssistant: "#1e3a5f",
     bubbleUser: "#166534",
     questionHighlight: "#fbbf24",
   },

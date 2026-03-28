@@ -39,7 +39,6 @@ The system consists of four primary components: a React Native mobile app, a Fas
 | User Agent | Gemini 2.0 Flash Live | Passive triage via microphone and camera; surfaces optional yes/no questions; user may tap or type but is not required to |
 | Dispatch Agent | Gemini 2.0 Flash Live | Voice call to 112 operator via Twilio VoIP |
 | Shared state | Redis (versioned JSON) | Single source of truth for all agents and orchestrator |
-| Session DB | PostgreSQL | Audit log, session archive, compliance record |
 
 ## 2.2 Design principles
 
@@ -241,7 +240,7 @@ The mobile app is the user's only interface during an emergency. It is built in 
 
 ## 7.1 SOS trigger
 
-The SOS button is displayed prominently on the home screen. A deliberate confirmation step (press and hold for 1.5 seconds, or press twice within 0.5 seconds) prevents accidental triggers. On trigger, the app immediately bundles a payload and POSTs to /sos.
+The SOS button is displayed prominently on the home screen. A deliberate confirmation step (press and hold for 1.5 seconds, or press twice within 0.5 seconds) prevents accidental triggers. On trigger, the app immediately bundles a payload and POSTs to /api/sos.
 
 ```json
 // SOS payload
@@ -256,7 +255,7 @@ The SOS button is displayed prominently on the home screen. A deliberate confirm
 
 ## 7.2 Session WebSocket
 
-After receiving session_id from /sos, the app opens a WebSocket to /session/{id}/ws. This connection carries:
+After receiving session_id from /sos, the app opens a WebSocket to /api/session/{id}/ws. This connection carries:
 
 | Direction | Content |
 |----|----|
@@ -291,7 +290,7 @@ After receiving session_id from /sos, the app opens a WebSocket to /session/{id}
 
 ## 8.1 HTTP endpoints
 
-### POST /sos
+### POST /api/sos
 
 Trigger a new emergency session. Returns immediately with session_id. All further work is asynchronous.
 
@@ -306,7 +305,7 @@ Response 429:
 { error: 'Rate limit exceeded' }  // max 3 SOS per device per hour
 ```
 
-### GET /session/{id}/status
+### GET /api/session/{id}/status
 
 Poll current session state. Useful for the mobile app when the WebSocket is unavailable.
 
@@ -318,7 +317,7 @@ Response 404:
 { error: 'Session not found' }
 ```
 
-### POST /session/{id}/twilio/audio
+### POST /api/session/{id}/twilio/audio
 
 Receive operator audio from Twilio and return queued agent audio. Simplified polling endpoint for the demo. Replaced by a full Twilio Media Streams WebSocket in production.
 
@@ -330,7 +329,7 @@ Response 200:
 { audio_chunks: string[] }  // base64 PCM chunks to pipe back to Twilio
 ```
 
-### GET /health
+### GET /api/health
 
 ```
 Response 200:
@@ -339,7 +338,7 @@ Response 200:
 
 ## 8.2 WebSocket protocol
 
-The WebSocket at /session/{id}/ws uses JSON messages in both directions.
+The WebSocket at /api/session/{id}/ws uses JSON messages in both directions.
 
 | Direction | Message type | Fields |
 |----|----|----|
@@ -363,7 +362,6 @@ The WebSocket at /session/{id}/ws uses JSON messages in both directions.
 | google-genai | Gemini API client |
 | redis\[asyncio\] | Async Redis client for shared state |
 | Redis 7+ | Shared session state store |
-| PostgreSQL 15+ | Audit log and session archive |
 | Twilio Programmable Voice | VoIP call to 112 (or simulated endpoint in demo) |
 | React Native 0.73+ | Mobile application |
 
@@ -372,7 +370,6 @@ The WebSocket at /session/{id}/ws uses JSON messages in both directions.
 ```bash
 GOOGLE_API_KEY=              # Gemini API key
 REDIS_URL=                   # redis://localhost:6379
-DATABASE_URL=                # postgresql://user:pass@host/db
 TWILIO_ACCOUNT_SID=          # Twilio credentials (production)
 TWILIO_AUTH_TOKEN=           # Twilio credentials (production)
 TWILIO_FROM_NUMBER=          # VoIP caller ID
@@ -404,11 +401,9 @@ uvicorn demo_dispatch:app --port 8001
 
 - Audio streams are not persisted — they flow through memory only
 
-- The EmergencySnapshot is archived to PostgreSQL on session close for audit purposes
-
 - GPS coordinates and health information are classified as sensitive personal data under GDPR
 
-- Data retention: audit logs are retained for 90 days, then anonymised
+- Audit logging and long-term data retention are deferred post-hackathon. Session data lives only in Redis with a 1-hour TTL.
 
 ## 10.2 Liability considerations
 
