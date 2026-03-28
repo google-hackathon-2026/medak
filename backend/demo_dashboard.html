@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medak Demo Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --blue: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --orange: #db6d28;
+    --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--blue);
+  }
+  .header .connect-form {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .header input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    width: 320px;
+  }
+  .header input::placeholder { color: var(--text-muted); }
+  .header button {
+    background: var(--blue);
+    border: none;
+    border-radius: 6px;
+    color: #000;
+    padding: 6px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .header button:hover { opacity: 0.9; }
+  .header button.disconnect {
+    background: var(--red);
+    color: #fff;
+  }
+
+  /* Main layout */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Left: Event log */
+  .log-panel {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .log-header {
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  .log-entry {
+    padding: 4px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    display: flex;
+    gap: 10px;
+  }
+  .log-entry:hover { background: rgba(255,255,255,0.02); }
+  .log-time {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    min-width: 70px;
+  }
+  .log-tag {
+    flex-shrink: 0;
+    min-width: 80px;
+    font-weight: 600;
+  }
+  .log-text { flex: 1; word-break: break-word; }
+
+  /* Speaker colors */
+  .speaker-assistant { color: var(--blue); }
+  .speaker-dispatch { color: var(--orange); }
+  .speaker-user { color: var(--green); }
+  .speaker-system { color: var(--purple); }
+
+  /* Right: Status panel */
+  .status-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow-y: auto;
+    background: var(--surface);
+  }
+  .status-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .status-section h3 {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+  }
+
+  /* Phase badge */
+  .phase-badge {
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .phase-INTAKE { background: var(--text-muted); color: #000; }
+  .phase-TRIAGE { background: var(--blue); color: #000; }
+  .phase-LIVE_CALL { background: var(--yellow); color: #000; }
+  .phase-RESOLVED { background: var(--green); color: #000; }
+  .phase-FAILED { background: var(--red); color: #fff; }
+
+  /* Confidence bar */
+  .confidence-container {
+    background: var(--bg);
+    border-radius: 8px;
+    overflow: hidden;
+    height: 28px;
+    position: relative;
+  }
+  .confidence-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--blue), var(--green));
+    transition: width 0.5s ease;
+    border-radius: 8px;
+  }
+  .confidence-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+
+  /* Checklist */
+  .checklist { list-style: none; }
+  .checklist li {
+    padding: 4px 0;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .checklist .icon { font-size: 16px; }
+  .check-done .icon { color: var(--green); }
+  .check-pending .icon { color: var(--text-muted); }
+
+  /* Call status */
+  .call-status {
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .call-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .call-IDLE .call-dot { background: var(--text-muted); }
+  .call-DIALING .call-dot { background: var(--yellow); animation: pulse 1s infinite; }
+  .call-CONNECTED .call-dot { background: var(--green); animation: pulse 1.5s infinite; }
+  .call-CONFIRMED .call-dot { background: var(--green); }
+  .call-DROPPED .call-dot { background: var(--red); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Timer */
+  .timer {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ETA */
+  .eta-banner {
+    display: none;
+    padding: 16px 20px;
+    background: var(--green);
+    color: #000;
+    text-align: center;
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .eta-banner.show { display: block; }
+
+  /* Connection status */
+  .conn-status {
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .conn-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .conn-connected .conn-dot { background: var(--green); }
+  .conn-disconnected .conn-dot { background: var(--red); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🚨 Medak Demo Dashboard</h1>
+  <div class="conn-status conn-disconnected" id="connStatus">
+    <span class="conn-dot"></span>
+    <span id="connLabel">Disconnected</span>
+  </div>
+  <div class="connect-form">
+    <input type="text" id="sessionInput" placeholder="Session ID (paste from /api/sos response)" />
+    <button id="connectBtn" onclick="toggleConnection()">Connect</button>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Left: Event Log -->
+  <div class="log-panel">
+    <div class="log-header">📋 Event Log</div>
+    <div class="log-body" id="logBody"></div>
+  </div>
+
+  <!-- Right: Status Panel -->
+  <div class="status-panel">
+    <div class="status-section">
+      <h3>⏱ Elapsed</h3>
+      <div class="timer" id="timer">00:00</div>
+    </div>
+
+    <div class="status-section">
+      <h3>📡 Phase</h3>
+      <span class="phase-badge phase-INTAKE" id="phaseBadge">INTAKE</span>
+    </div>
+
+    <div class="status-section">
+      <h3>📊 Confidence</h3>
+      <div class="confidence-container">
+        <div class="confidence-fill" id="confidenceFill" style="width: 0%"></div>
+        <div class="confidence-label" id="confidenceLabel">0%</div>
+      </div>
+    </div>
+
+    <div class="status-section">
+      <h3>📞 Call Status</h3>
+      <div class="call-status call-IDLE" id="callStatus">
+        <span class="call-dot"></span>
+        <span id="callLabel">IDLE</span>
+      </div>
+    </div>
+
+    <div class="status-section">
+      <h3>📋 Snapshot Fields</h3>
+      <ul class="checklist" id="checklist">
+        <li class="check-pending" id="chk-location"><span class="icon">⬜</span> Location</li>
+        <li class="check-pending" id="chk-emergency"><span class="icon">⬜</span> Emergency Type</li>
+        <li class="check-pending" id="chk-conscious"><span class="icon">⬜</span> Consciousness</li>
+        <li class="check-pending" id="chk-breathing"><span class="icon">⬜</span> Breathing</li>
+        <li class="check-pending" id="chk-victims"><span class="icon">⬜</span> Victim Count</li>
+      </ul>
+    </div>
+
+    <div class="eta-banner" id="etaBanner">
+      ✅ POMOĆ JE NA PUTU — ETA: <span id="etaMinutes">?</span> min
+    </div>
+  </div>
+</div>
+
+<script>
+  let ws = null;
+  let startTime = null;
+  let timerInterval = null;
+
+  // --- WebSocket Connection ---
+  function toggleConnection() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.close();
+      return;
+    }
+    const sessionId = document.getElementById('sessionInput').value.trim();
+    if (!sessionId) { alert('Enter a session ID'); return; }
+    connect(sessionId);
+  }
+
+  function connect(sessionId) {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${proto}//${location.host}/api/session/${sessionId}/ws`;
+
+    addLog('system', 'SYSTEM', `Connecting to ${sessionId}...`);
+
+    ws = new WebSocket(url);
+    startTime = Date.now();
+    startTimer();
+
+    ws.onopen = () => {
+      setConnStatus(true);
+      document.getElementById('connectBtn').textContent = 'Disconnect';
+      document.getElementById('connectBtn').classList.add('disconnect');
+      addLog('system', 'SYSTEM', 'WebSocket connected');
+    };
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      handleMessage(msg);
+    };
+
+    ws.onclose = () => {
+      setConnStatus(false);
+      document.getElementById('connectBtn').textContent = 'Connect';
+      document.getElementById('connectBtn').classList.remove('disconnect');
+      addLog('system', 'SYSTEM', 'WebSocket disconnected');
+      stopTimer();
+    };
+
+    ws.onerror = () => {
+      addLog('system', 'SYSTEM', 'WebSocket error');
+    };
+  }
+
+  // --- Message Handler ---
+  function handleMessage(msg) {
+    const type = msg.type;
+
+    if (type === 'transcript') {
+      const speaker = msg.speaker || 'system';
+      const label = {
+        assistant: 'AGENT',
+        dispatch: '112',
+        user: 'USER',
+      }[speaker] || speaker.toUpperCase();
+      addLog(speaker, label, msg.text);
+
+      // Infer checklist from transcript content
+      inferChecklist(msg.text);
+    }
+
+    else if (type === 'STATUS_UPDATE') {
+      updatePhase(msg.phase);
+      if (msg.confidence !== undefined) {
+        updateConfidence(msg.confidence);
+      }
+      if (msg.call_status) {
+        updateCallStatus(msg.call_status);
+      }
+      addLog('system', 'STATUS', `Phase: ${msg.phase}` +
+        (msg.confidence !== undefined ? ` | Confidence: ${Math.round(msg.confidence * 100)}%` : '') +
+        (msg.call_status ? ` | Call: ${msg.call_status}` : ''));
+    }
+
+    else if (type === 'RESOLVED') {
+      updatePhase('RESOLVED');
+      const eta = msg.eta_minutes || 0;
+      document.getElementById('etaMinutes').textContent = eta;
+      document.getElementById('etaBanner').classList.add('show');
+      updateCallStatus('CONFIRMED');
+      addLog('system', 'RESOLVED', `✅ ${msg.message} — ETA: ${eta} min`);
+      stopTimer();
+    }
+
+    else if (type === 'FAILED') {
+      updatePhase('FAILED');
+      addLog('system', 'FAILED', `❌ ${msg.message}`);
+      stopTimer();
+    }
+
+    else if (type === 'user_question') {
+      addLog('system', 'Q&A', `❓ Question for user: "${msg.question}"`);
+    }
+
+    else if (type === 'pong') {
+      // ignore
+    }
+
+    else {
+      addLog('system', 'EVENT', JSON.stringify(msg));
+    }
+  }
+
+  // --- UI Updates ---
+  function addLog(speaker, tag, text) {
+    const body = document.getElementById('logBody');
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+
+    const elapsed = startTime ? ((Date.now() - startTime) / 1000).toFixed(1) : '0.0';
+    const timeStr = `T+${elapsed}s`;
+
+    entry.innerHTML = `
+      <span class="log-time">${timeStr}</span>
+      <span class="log-tag speaker-${speaker}">${tag}</span>
+      <span class="log-text">${escapeHtml(text)}</span>
+    `;
+
+    body.appendChild(entry);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function updatePhase(phase) {
+    const badge = document.getElementById('phaseBadge');
+    badge.textContent = phase;
+    badge.className = `phase-badge phase-${phase}`;
+  }
+
+  function updateConfidence(score) {
+    const pct = Math.round(score * 100);
+    document.getElementById('confidenceFill').style.width = `${pct}%`;
+    document.getElementById('confidenceLabel').textContent = `${pct}%`;
+  }
+
+  function updateCallStatus(status) {
+    const el = document.getElementById('callStatus');
+    el.className = `call-status call-${status}`;
+    document.getElementById('callLabel').textContent = status;
+  }
+
+  function setConnStatus(connected) {
+    const el = document.getElementById('connStatus');
+    const label = document.getElementById('connLabel');
+    if (connected) {
+      el.className = 'conn-status conn-connected';
+      label.textContent = 'Connected';
+    } else {
+      el.className = 'conn-status conn-disconnected';
+      label.textContent = 'Disconnected';
+    }
+  }
+
+  // Infer checklist fields from transcript messages
+  function inferChecklist(text) {
+    const lower = text.toLowerCase();
+    if (lower.includes('lokacija potvrđena') || lower.includes('adresa:') || lower.includes('bulevar')) {
+      setCheck('chk-location', true);
+    }
+    if (lower.includes('medicinski') || lower.includes('požar') || lower.includes('emergency_type') || lower.includes('hitan slučaj detektovan')) {
+      setCheck('chk-emergency', true);
+    }
+    if (lower.includes('pri svesti') || lower.includes('conscious') || lower.includes('svesti')) {
+      setCheck('chk-conscious', true);
+    }
+    if (lower.includes('diše') || lower.includes('breathing') || lower.includes('disanje')) {
+      setCheck('chk-breathing', true);
+    }
+    if (lower.includes('žrtva') || lower.includes('victim') || lower.includes('jedna žrtva')) {
+      setCheck('chk-victims', true);
+    }
+  }
+
+  function setCheck(id, done) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = done ? 'check-done' : 'check-pending';
+    el.querySelector('.icon').textContent = done ? '✅' : '⬜';
+  }
+
+  // --- Timer ---
+  function startTimer() {
+    stopTimer();
+    timerInterval = setInterval(() => {
+      if (!startTime) return;
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      const ss = String(elapsed % 60).padStart(2, '0');
+      document.getElementById('timer').textContent = `${mm}:${ss}`;
+    }, 200);
+  }
+
+  function stopTimer() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // --- Ping keepalive ---
+  setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ping' }));
+    }
+  }, 15000);
+
+  // --- Auto-connect from URL hash ---
+  if (location.hash) {
+    const id = location.hash.substring(1);
+    document.getElementById('sessionInput').value = id;
+    connect(id);
+  }
+</script>
+</body>
+</html>
