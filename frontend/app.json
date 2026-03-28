@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "Medak",
+    "slug": "medak",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "medak",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a1a"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Medak needs your location to share it with emergency services.",
+        "NSCameraUsageDescription": "Medak can attach a photo of the emergency scene."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1a1a",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        { "locationWhenInUsePermission": "Medak needs your location to share it with emergency services." }
+      ],
+      [
+        "expo-image-picker",
+        { "cameraPermission": "Medak can attach a photo of the emergency scene." }
+      ]
+    ]
+  }
+}
