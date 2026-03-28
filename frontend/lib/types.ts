@@ -8,13 +8,8 @@ export type SessionPhase =
   | "RESOLVED"
   | "FAILED";
 
-// Emergency types (design doc EmergencySnapshot)
-export type EmergencyType =
-  | "MEDICAL"
-  | "FIRE"
-  | "POLICE"
-  | "GAS"
-  | "OTHER";
+// Emergency types — 3 buttons on home screen
+export type EmergencyType = "AMBULANCE" | "POLICE" | "FIRE";
 
 // Dispatch Agent call status
 export type CallStatus =
@@ -34,6 +29,7 @@ export interface LocationData {
 
 // POST /api/sos request
 export interface SOSRequest {
+  emergency_type: EmergencyType;
   lat: number;
   lng: number;
   address?: string;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { View, StyleSheet, Animated } from "react-native";
 import { Text, Button } from "react-native-paper";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -58,7 +58,8 @@ export default function AlarmScreen() {
     setCalling(true);
 
     try {
-      const { sessionId } = await initiateSOSCall();
+      // Fall/shake auto-triggers default to AMBULANCE
+      const { sessionId } = await initiateSOSCall({ emergencyType: "AMBULANCE" });
       dismissAlarm();
       router.replace({
         pathname: "/session",
@@ -92,10 +93,14 @@ export default function AlarmScreen() {
     router.replace("/");
   }, [dismissAlarm, router]);
 
-  const backgroundColor = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [theme.colors.errorContainer, theme.colors.primary],
-  });
+  const backgroundColor = useMemo(
+    () =>
+      pulseAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [theme.colors.errorContainer, theme.colors.primary],
+      }),
+    [pulseAnim, theme.colors.errorContainer, theme.colors.primary]
+  );
 
   if (error) {
     return (
@@ -132,7 +137,7 @@ export default function AlarmScreen() {
             : "SOS aktiviran"}
         </Text>
 
-        <Text variant="titleMedium" style={styles.subText}>
+        <Text variant="titleMedium" style={[styles.subText, { color: theme.colors.onPrimary }]}>
           {calling
             ? "Pozivanje hitne pomoći..."
             : `Poziv hitnoj pomoći za ${seconds} sek...`}
@@ -182,7 +187,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   subText: {
-    color: "rgba(255, 255, 255, 0.8)",
+    opacity: 0.8,
     textAlign: "center",
   },
   cancelContainer: {

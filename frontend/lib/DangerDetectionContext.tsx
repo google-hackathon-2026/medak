@@ -40,8 +40,7 @@ export function DangerDetectionProvider({
   alarmActiveRef.current = alarmActive;
 
   // Don't detect on session/alarm screens or when alarm is already firing
-  const suppressedRoutes = ["/session", "/alarm"];
-  const suppressed = suppressedRoutes.includes(pathname) || alarmActive;
+  const suppressed = pathname === "/session" || pathname === "/alarm" || alarmActive;
   const enabled =
     !suppressed &&
     (settings.fallDetectionEnabled || settings.shakeSOSEnabled);
@@ -78,6 +77,8 @@ export function DangerDetectionProvider({
   const { isMonitoring } = useDangerDetection({
     onDangerDetected: handleDangerDetected,
     enabled,
+    fallEnabled: settings.fallDetectionEnabled,
+    shakeEnabled: settings.shakeSOSEnabled,
     shakeSensitivity: settings.shakeSensitivity,
   });
 

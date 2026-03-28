@@ -1,6 +1,9 @@
 {
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "permissions": {
-    "defaultMode": "plan",
     "allow": [
       "Bash(git status)",
       "Bash(git status *)",
@@ -36,10 +39,11 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:nextjs.org)",
       "WebFetch(domain:tailwindcss.com)"
-    ]
+    ],
+    "defaultMode": "plan"
   },
-  "attribution": {
-    "commit": "",
-    "pr": ""
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true
   }
 }

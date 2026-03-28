@@ -23,11 +23,23 @@ const SHAKE_COUNTS: Record<DangerSettings["shakeSensitivity"], number> = {
 interface Options {
   onDangerDetected: (type: DangerType) => void;
   enabled: boolean;
+  fallEnabled?: boolean;
+  shakeEnabled?: boolean;
   shakeSensitivity?: DangerSettings["shakeSensitivity"];
 }
 
 export function useDangerDetection(options: Options) {
-  const { onDangerDetected, enabled, shakeSensitivity = "MEDIUM" } = options;
+  const {
+    onDangerDetected,
+    enabled,
+    fallEnabled = true,
+    shakeEnabled = true,
+    shakeSensitivity = "MEDIUM",
+  } = options;
+  const fallEnabledRef = useRef(fallEnabled);
+  fallEnabledRef.current = fallEnabled;
+  const shakeEnabledRef = useRef(shakeEnabled);
+  shakeEnabledRef.current = shakeEnabled;
 
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [sensorAvailable, setSensorAvailable] = useState<boolean | null>(null);
@@ -92,67 +104,70 @@ export function useDangerDetection(options: Options) {
         const now = Date.now();
         const magnitudeSq = x * x + y * y + z * z;
 
-        // Fall detection: compare squared magnitudes to avoid sqrt
-        const fs = fallState.current;
+        // Fall detection (squared magnitudes avoid sqrt)
+        if (fallEnabledRef.current) {
+          const fs = fallState.current;
 
-        if (fs.phase === "IDLE") {
-          if (magnitudeSq < FREEFALL_THRESHOLD_SQ) {
-            fs.phase = "FREEFALL";
-            fs.freefallStart = now;
-          }
-        } else if (fs.phase === "FREEFALL") {
-          if (magnitudeSq >= FREEFALL_THRESHOLD_SQ) {
-            const duration = now - (fs.freefallStart ?? now);
-            if (duration >= FREEFALL_MIN_DURATION) {
-              fs.phase = "IMPACT_WINDOW";
-              fs.freefallEnd = now;
-            } else {
+          if (fs.phase === "IDLE") {
+            if (magnitudeSq < FREEFALL_THRESHOLD_SQ) {
+              fs.phase = "FREEFALL";
+              fs.freefallStart = now;
+            }
+          } else if (fs.phase === "FREEFALL") {
+            if (magnitudeSq >= FREEFALL_THRESHOLD_SQ) {
+              const duration = now - (fs.freefallStart ?? now);
+              if (duration >= FREEFALL_MIN_DURATION) {
+                fs.phase = "IMPACT_WINDOW";
+                fs.freefallEnd = now;
+              } else {
+                fs.phase = "IDLE";
+                fs.freefallStart = null;
+              }
+            }
+          } else if (fs.phase === "IMPACT_WINDOW") {
+            if (magnitudeSq > IMPACT_THRESHOLD_SQ) {
+              trigger("FALL");
+              return;
+            }
+            if (now - (fs.freefallEnd ?? now) > IMPACT_WINDOW) {
               fs.phase = "IDLE";
               fs.freefallStart = null;
+              fs.freefallEnd = null;
             }
           }
-        } else if (fs.phase === "IMPACT_WINDOW") {
-          if (magnitudeSq > IMPACT_THRESHOLD_SQ) {
-            trigger("FALL");
-            return;
-          }
-          if (now - (fs.freefallEnd ?? now) > IMPACT_WINDOW) {
-            fs.phase = "IDLE";
-            fs.freefallStart = null;
-            fs.freefallEnd = null;
-          }
         }
 
-        // Shake detection: needs actual magnitude for delta calculation
-        const ss = shakeState.current;
-        const magnitude = Math.sqrt(magnitudeSq);
+        // Shake detection
+        if (shakeEnabledRef.current) {
+          const ss = shakeState.current;
+          const magnitude = Math.sqrt(magnitudeSq);
 
-        if (ss.lastMagnitude !== null) {
-          const delta = magnitude - ss.lastMagnitude;
+          if (ss.lastMagnitude !== null) {
+            const delta = magnitude - ss.lastMagnitude;
 
-          if (
-            ss.lastDelta !== null &&
-            Math.sign(delta) !== Math.sign(ss.lastDelta) &&
-            Math.abs(delta) > SHAKE_AMPLITUDE
-          ) {
-            ss.events.push(now);
+            if (
+              ss.lastDelta !== null &&
+              delta * ss.lastDelta < 0 &&
+              Math.abs(delta) > SHAKE_AMPLITUDE
+            ) {
+              ss.events.push(now);
+            }
+
+            while (ss.events.length > 0 && now - ss.events[0] > SHAKE_WINDOW) {
+              ss.events.shift();
+            }
+
+            const required = SHAKE_COUNTS[sensitivityRef.current];
+            if (ss.events.length >= required) {
+              ss.events = [];
+              trigger("SHAKE");
+              return;
+            }
+
+            ss.lastDelta = delta;
           }
-
-          // Prune old events — in-place shift since timestamps are sorted
-          while (ss.events.length > 0 && now - ss.events[0] > SHAKE_WINDOW) {
-            ss.events.shift();
-          }
-
-          const required = SHAKE_COUNTS[sensitivityRef.current];
-          if (ss.events.length >= required) {
-            ss.events = [];
-            trigger("SHAKE");
-            return;
-          }
-
-          ss.lastDelta = delta;
+          ss.lastMagnitude = magnitude;
         }
-        ss.lastMagnitude = magnitude;
       });
     })();
 

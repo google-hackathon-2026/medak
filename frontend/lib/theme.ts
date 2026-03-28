@@ -3,9 +3,9 @@ import type { MD3Theme } from "react-native-paper";
 
 export type AppTheme = MD3Theme & {
   custom: {
-    sosPrimary: string;
-    sosActive: string;
-    sosRing: string;
+    AMBULANCE: string;
+    POLICE: string;
+    FIRE: string;
     triageBackground: string;
     resolvedBackground: string;
     failedBackground: string;
@@ -64,9 +64,9 @@ const theme: AppTheme = {
     },
   },
   custom: {
-    sosPrimary: "#dc2626",
-    sosActive: "#ff3333",
-    sosRing: "#ff4444",
+    AMBULANCE: "#dc2626",
+    POLICE: "#2563eb",
+    FIRE: "#ea580c",
     triageBackground: "#1a1a2e",
     resolvedBackground: "#0a2e0a",
     failedBackground: "#2e0a0a",
