@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
@@ -229,6 +229,29 @@ def create_app(
             "</Response>"
         )
         return Response(content=twiml, media_type="text/xml")
+
+    @app.post("/api/session/{session_id}/twilio/status")
+    async def twilio_status(
+        session_id: str,
+        CallStatus: str = Form(""),
+    ) -> dict:
+        from snapshot import CallStatus as CS
+        STATUS_MAP = {
+            "in-progress": "CONNECTED",
+            "completed": "DROPPED",
+            "failed": "DROPPED",
+            "busy": "DROPPED",
+            "no-answer": "DROPPED",
+        }
+        new_status = STATUS_MAP.get(CallStatus)
+        if new_status is not None:
+            cs = CS(new_status)
+            try:
+                await store.update(session_id, lambda s: setattr(s, "call_status", cs))
+            except KeyError:
+                # Session doesn't exist; no-op
+                pass
+        return {"ok": True}
 
     return app
 
