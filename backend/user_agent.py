@@ -231,7 +231,7 @@ async def run_user_agent(
     }
 
     config = genai_types.LiveConnectConfig(
-        response_modalities=["TEXT"],
+        response_modalities=["AUDIO"],
         system_instruction=genai_types.Content(
             parts=[genai_types.Part(text=USER_AGENT_SYSTEM_PROMPT)]
         ),
@@ -240,7 +240,7 @@ async def run_user_agent(
 
     try:
         async with client.aio.live.connect(
-            model="gemini-2.5-flash-native-audio-preview-12-2025",
+            model="gemini-live-2.5-flash-native-audio",
             config=config,
         ) as session:
             logger.info("User Agent connected for session %s", session_id)
@@ -253,7 +253,12 @@ async def run_user_agent(
                     f"Adresa: {snap.location.address or 'nepoznata'}. "
                     f"Pocni sa posmatranjem i prikupljanjem informacija."
                 )
-                await session.send(input=initial_context, end_of_turn=True)
+                await session.send_client_content(
+                    turns=genai_types.Content(
+                        role="user",
+                        parts=[genai_types.Part(text=initial_context)],
+                    )
+                )
 
             async for response in session.receive():
                 # Handle tool calls
@@ -262,15 +267,13 @@ async def run_user_agent(
                         handler = tool_handlers.get(fc.name)
                         if handler:
                             result = await handler(fc.args or {})
-                            await session.send(
-                                input=genai_types.LiveClientToolResponse(
-                                    function_responses=[
-                                        genai_types.FunctionResponse(
-                                            name=fc.name,
-                                            response={"result": result},
-                                        )
-                                    ]
-                                )
+                            await session.send_tool_response(
+                                function_responses=[
+                                    genai_types.FunctionResponse(
+                                        name=fc.name,
+                                        response={"result": result},
+                                    )
+                                ]
                             )
 
                 # Handle text responses — broadcast as transcript

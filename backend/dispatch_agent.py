@@ -204,7 +204,7 @@ async def run_dispatch_agent(
 
     # Connect Gemini Live session
     config = genai_types.LiveConnectConfig(
-        response_modalities=["AUDIO", "TEXT"],
+        response_modalities=["AUDIO"],
         system_instruction=genai_types.Content(
             parts=[genai_types.Part(text=DISPATCH_AGENT_SYSTEM_PROMPT)]
         ),
@@ -213,14 +213,16 @@ async def run_dispatch_agent(
 
     try:
         async with client.aio.live.connect(
-            model="gemini-2.5-flash-native-audio-preview-12-2025",
+            model="gemini-live-2.5-flash-native-audio",
             config=config,
         ) as session:
             logger.info("Dispatch Agent connected for session %s", session_id)
 
-            await session.send(
-                input="Poziv je uspostavljen. Pocni sa brifingom.",
-                end_of_turn=True,
+            await session.send_client_content(
+                turns=genai_types.Content(
+                    role="user",
+                    parts=[genai_types.Part(text="Poziv je uspostavljen. Pocni sa brifingom.")],
+                )
             )
 
             async def _sender() -> None:
@@ -235,14 +237,10 @@ async def run_dispatch_agent(
                     except asyncio.CancelledError:
                         break
                     try:
-                        await session.send(
-                            input=genai_types.LiveClientRealtimeInput(
-                                media_chunks=[
-                                    genai_types.Blob(
-                                        data=chunk,
-                                        mime_type="audio/pcm;rate=16000",
-                                    )
-                                ]
+                        await session.send_realtime_input(
+                            media=genai_types.Blob(
+                                data=chunk,
+                                mime_type="audio/pcm;rate=16000",
                             )
                         )
                     except Exception:
@@ -271,18 +269,16 @@ async def run_dispatch_agent(
                             handler = tool_handlers.get(fc.name)
                             if handler:
                                 result = await handler(fc.args or {})
-                                await session.send(
-                                    input=genai_types.LiveClientToolResponse(
-                                        function_responses=[
-                                            genai_types.FunctionResponse(
-                                                name=fc.name,
-                                                response={"result": result},
-                                            )
-                                        ]
-                                    )
+                                await session.send_tool_response(
+                                    function_responses=[
+                                        genai_types.FunctionResponse(
+                                            name=fc.name,
+                                            response={"result": result},
+                                        )
+                                    ]
                                 )
 
-                    # Text transcript
+                    # Text transcript (from tool call text output)
                     if response.text:
                         await broadcast(session_id, {
                             "type": "transcript",
