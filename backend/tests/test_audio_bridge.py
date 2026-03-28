@@ -4,7 +4,7 @@
 10ms of audio durations (used throughout):
   mulaw 8kHz  = 80 samples × 1 byte  =   80 bytes
   PCM 8kHz    = 80 samples × 2 bytes =  160 bytes
-  PCM 16kHz   = 158 samples × 2 bytes = 318 bytes  (via audioop.ratecv with state=None)
+  PCM 16kHz   = 159 samples × 2 bytes = 318 bytes  (via audioop.ratecv with state=None)
   PCM 24kHz   = 240 samples × 2 bytes = 480 bytes
 """
 import audioop
@@ -67,7 +67,7 @@ def test_round_trip_duration_coherence():
     mulaw_in = audioop.lin2ulaw(pcm8_silence, 2)  # 80 bytes
     assert len(mulaw_in) == 80
     pcm16 = ulaw8k_to_pcm16k(mulaw_in)
-    assert len(pcm16) == 318  # audioop.ratecv(state=None) produces 158 samples × 2 bytes
+    assert len(pcm16) == 318  # audioop.ratecv(state=None) produces 159 samples × 2 bytes
 
     # Outbound: 10ms PCM 24kHz = 480 bytes → mulaw 8kHz = 80 bytes
     pcm24 = bytes(480)
