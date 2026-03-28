@@ -132,6 +132,7 @@ def create_app(
             session_id=session_id,
             store=store,
             broadcast=registry.broadcast,
+            bridge_registry=app.state.bridge_registry,
         )
         asyncio.create_task(orch.run())
 

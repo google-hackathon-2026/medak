@@ -6,6 +6,7 @@ import logging
 import time
 from typing import Callable, Awaitable
 
+from audio_bridge import AudioBridgeRegistry
 from config import get_settings
 from snapshot import (
     CallStatus,
@@ -29,11 +30,13 @@ class SessionOrchestrator:
         triage_timeout: int | None = None,
         confidence_threshold: float | None = None,
         max_reconnects: int | None = None,
+        bridge_registry: AudioBridgeRegistry | None = None,
     ) -> None:
         self.session_id = session_id
         self.store = store
         self.broadcast = broadcast
         self.start_agents = start_agents
+        self.bridge_registry = bridge_registry
 
         settings = get_settings()
         self.triage_timeout = triage_timeout or settings.triage_timeout_seconds
@@ -179,6 +182,10 @@ class SessionOrchestrator:
 
     async def _start_dispatch_agent(self) -> None:
         from dispatch_agent import run_dispatch_agent
+        bridge = None
+        if self.bridge_registry is not None:
+            bridge = self.bridge_registry.create(self.session_id)
         self._dispatch_agent_task = asyncio.create_task(
-            run_dispatch_agent(self.session_id, self.store, self.broadcast)
+            run_dispatch_agent(self.session_id, self.store, self.broadcast, bridge=bridge)
         )
+        await asyncio.sleep(0)  # yield to let the task start before returning

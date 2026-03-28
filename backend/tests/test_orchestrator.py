@@ -117,3 +117,76 @@ async def test_confirmed_call_resolves(store: SnapshotStore):
     resolved_msgs = [m for m in broadcaster.messages if m.get("type") == "RESOLVED"]
     assert len(resolved_msgs) == 1
     assert resolved_msgs[0]["eta_minutes"] == 8
+
+
+import unittest.mock as mock
+from audio_bridge import AudioBridge, AudioBridgeRegistry
+
+
+async def test_orchestrator_accepts_bridge_registry_param():
+    """SessionOrchestrator.__init__ must accept bridge_registry kwarg."""
+    import inspect
+    sig = inspect.signature(SessionOrchestrator.__init__)
+    assert "bridge_registry" in sig.parameters
+    param = sig.parameters["bridge_registry"]
+    assert param.default is None
+
+
+async def test_orchestrator_creates_bridge_in_registry(store: SnapshotStore):
+    """_start_dispatch_agent must call registry.create(session_id) before launching agent."""
+    snap = EmergencySnapshot(
+        session_id="s1",
+        phase=SessionPhase.LIVE_CALL,
+        location=Location(lat=44.8, lng=20.4),
+    )
+    await store.save(snap)
+    registry = AudioBridgeRegistry()
+    dispatched_bridges = []
+
+    async def mock_run_dispatch_agent(session_id, s, b, bridge=None):
+        dispatched_bridges.append(bridge)
+
+    broadcaster = FakeBroadcaster()
+    orch = SessionOrchestrator(
+        session_id="s1",
+        store=store,
+        broadcast=broadcaster,
+        start_agents=True,
+        bridge_registry=registry,
+    )
+
+    with mock.patch("dispatch_agent.run_dispatch_agent", mock_run_dispatch_agent):
+        await orch._start_dispatch_agent()
+
+    assert registry.get("s1") is not None, "Bridge not in registry"
+    assert len(dispatched_bridges) == 1
+    assert isinstance(dispatched_bridges[0], AudioBridge)
+    assert dispatched_bridges[0] is registry.get("s1")
+
+
+async def test_orchestrator_no_bridge_registry_passes_none(store: SnapshotStore):
+    """When bridge_registry=None, run_dispatch_agent receives bridge=None."""
+    snap = EmergencySnapshot(
+        session_id="s1",
+        phase=SessionPhase.LIVE_CALL,
+        location=Location(lat=44.8, lng=20.4),
+    )
+    await store.save(snap)
+    dispatched_bridges = []
+
+    async def mock_run_dispatch_agent(session_id, s, b, bridge=None):
+        dispatched_bridges.append(bridge)
+
+    broadcaster = FakeBroadcaster()
+    orch = SessionOrchestrator(
+        session_id="s1",
+        store=store,
+        broadcast=broadcaster,
+        start_agents=True,
+        bridge_registry=None,
+    )
+
+    with mock.patch("dispatch_agent.run_dispatch_agent", mock_run_dispatch_agent):
+        await orch._start_dispatch_agent()
+
+    assert dispatched_bridges[0] is None
