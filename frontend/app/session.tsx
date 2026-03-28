@@ -19,6 +19,7 @@ import { useAppTheme } from "../lib/useAppTheme";
 import { SessionWebSocket } from "../lib/websocket";
 import { requestMicPermission, startMicCapture } from "../lib/audio";
 import { CameraView, useCameraPermissions, startFrameCapture } from "../lib/camera";
+import { STRINGS } from "../lib/strings";
 import type { EmergencyType, SessionPhase, TranscriptEntry } from "../lib/types";
 
 const EMERGENCY_NUMBERS: Record<EmergencyType, string> = {
@@ -28,15 +29,15 @@ const EMERGENCY_NUMBERS: Record<EmergencyType, string> = {
 };
 
 const EMERGENCY_LABELS: Record<EmergencyType, string> = {
-  AMBULANCE: "Hitna pomoć",
-  POLICE: "Policija",
-  FIRE: "Vatrogasci",
+  AMBULANCE: STRINGS.emergency_ambulance,
+  POLICE: STRINGS.emergency_police,
+  FIRE: STRINGS.emergency_fire,
 };
 
 export default function SessionScreen() {
   const { sessionId, emergencyType } = useLocalSearchParams<{ sessionId: string; emergencyType: EmergencyType }>();
   const emergencyNumber = EMERGENCY_NUMBERS[emergencyType] || "194";
-  const emergencyLabel = EMERGENCY_LABELS[emergencyType] || "Hitna pomoć";
+  const emergencyLabel = EMERGENCY_LABELS[emergencyType] || STRINGS.emergency_ambulance;
   const theme = useAppTheme();
 
   const [phase, setPhase] = useState<SessionPhase>("INTAKE");
@@ -239,7 +240,7 @@ export default function SessionScreen() {
               style={styles.tapButton}
               buttonColor={theme.custom.success}
             >
-              DA
+              {STRINGS.yes}
             </Button>
             <Button
               mode="contained"
@@ -247,7 +248,7 @@ export default function SessionScreen() {
               style={styles.tapButton}
               buttonColor={theme.colors.error}
             >
-              NE
+              {STRINGS.no}
             </Button>
           </View>
 
@@ -255,7 +256,7 @@ export default function SessionScreen() {
             <TextInput
               value={userInput}
               onChangeText={setUserInput}
-              placeholder="Ili unesite odgovor..."
+              placeholder={STRINGS.or_enter_response}
               placeholderTextColor={theme.colors.onSurfaceVariant}
               style={[
                 styles.textInput,
@@ -273,7 +274,7 @@ export default function SessionScreen() {
               disabled={!userInput.trim()}
               compact
             >
-              Pošalji
+              {STRINGS.send}
             </Button>
           </View>
         </Surface>
@@ -302,7 +303,7 @@ function TranscriptBubble({ entry, theme }: { entry: TranscriptEntry } & ThemePr
         variant="labelSmall"
         style={{ color: theme.colors.onSurfaceVariant, marginBottom: 2 }}
       >
-        {isUser ? "Vi" : "Sistem"}
+        {isUser ? STRINGS.you : STRINGS.system}
       </Text>
       <Text variant="bodyLarge" style={{ color: theme.colors.onPrimary }}>
         {entry.text}
@@ -358,7 +359,7 @@ function IntakeView({ theme }: ThemeProp) {
         variant="headlineLarge"
         style={{ color: theme.colors.onBackground, textAlign: "center" }}
       >
-        Povezivanje...
+        {STRINGS.connecting}
       </Text>
       <Text
         variant="bodyLarge"
@@ -368,7 +369,7 @@ function IntakeView({ theme }: ThemeProp) {
           marginTop: 12,
         }}
       >
-        Sesija se uspostavlja
+        {STRINGS.session_establishing}
       </Text>
     </View>
   );
@@ -400,7 +401,7 @@ function TriageView({
             variant="labelLarge"
             style={{ color: theme.colors.onSurfaceVariant }}
           >
-            Analiza u toku
+            {STRINGS.analysis_in_progress}
           </Text>
         </View>
         <View style={styles.confidenceContainer}>
@@ -408,7 +409,7 @@ function TriageView({
             variant="labelSmall"
             style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}
           >
-            Pouzdanost: {Math.round(confidence * 100)}%
+            {STRINGS.confidence}: {Math.round(confidence * 100)}%
           </Text>
           <ProgressBar
             progress={confidence}
@@ -420,7 +421,7 @@ function TriageView({
 
       <View style={styles.micIndicator}>
         <Text variant="labelMedium" style={{ color: theme.custom.AMBULANCE }}>
-          ● Mikrofon aktivan
+          ● {STRINGS.mic_active}
         </Text>
       </View>
 
@@ -428,7 +429,7 @@ function TriageView({
         transcript={transcript}
         scrollRef={scrollRef}
         theme={theme}
-        emptyMessage="Slušam okolinu..."
+        emptyMessage={STRINGS.listening}
       />
     </View>
   );
@@ -456,7 +457,7 @@ function LiveCallView({
           variant="titleLarge"
           style={{ color: theme.colors.background, fontWeight: "700", textAlign: "center" }}
         >
-          Poziv u toku — {emergencyLabel} ({emergencyNumber})
+          {STRINGS.call_in_progress} — {emergencyLabel} ({emergencyNumber})
         </Text>
       </Surface>
 
@@ -481,7 +482,7 @@ function ResolvedView({ theme, etaMinutes }: ThemeProp & { etaMinutes: number | 
           fontWeight: "700",
         }}
       >
-        Pomoć je na putu
+        {STRINGS.help_on_way}
       </Text>
       {etaMinutes != null && (
         <Text
@@ -503,7 +504,7 @@ function ResolvedView({ theme, etaMinutes }: ThemeProp & { etaMinutes: number | 
           marginTop: 24,
         }}
       >
-        Ostanite na lokaciji i sačekajte dolazak ekipe
+        {STRINGS.stay_on_location}
       </Text>
     </View>
   );
@@ -521,7 +522,7 @@ function FailedView({ theme, message, emergencyNumber }: ThemeProp & { message: 
           fontWeight: "700",
         }}
       >
-        Automatski poziv nije uspeo
+        {STRINGS.auto_call_failed}
       </Text>
       <Text
         variant="titleLarge"
@@ -531,7 +532,7 @@ function FailedView({ theme, message, emergencyNumber }: ThemeProp & { message: 
           marginTop: 24,
         }}
       >
-        Zamolite nekoga u blizini da pozove {emergencyNumber}
+        {STRINGS.ask_someone_to_call.replace("{number}", emergencyNumber)}
       </Text>
       {message && (
         <Text

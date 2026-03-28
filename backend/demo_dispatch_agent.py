@@ -21,38 +21,61 @@ logger = logging.getLogger(__name__)
 
 BroadcastFn = Callable[[str, dict], Awaitable[None]]
 
+# ---------------------------------------------------------------------------
+# Localisable strings — swap this dict to change the demo language
+# ---------------------------------------------------------------------------
+STRINGS = {
+    "calling_112": "Calling 112...",
+    "dispatcher_greeting": "Emergency services, what happened?",
+    "opening_statement": (
+        "This is an automated emergency call on behalf of a person who cannot speak. "
+        "I have information about the emergency."
+    ),
+    "dispatcher_ask_conscious": "Is the patient conscious? Does the patient respond to questions?",
+    "question_conscious": "Is the patient conscious?",
+    "dispatcher_ask_age": "How old is the patient?",
+    "question_age": "How old is the patient?",
+    "dispatcher_confirm": (
+        "Understood. We're sending an emergency team. "
+        "Estimated arrival time is 8 minutes. "
+        "Stay with the patient and do not move them."
+    ),
+    "checking_with_caller": "One moment, I'm checking with the caller.",
+    "still_waiting": "Still waiting for response from caller...",
+    "team_dispatched": "Team has been dispatched. Arriving in {eta} minutes.",
+}
+
 # Each entry: (delay_from_phase_start, action, arg1, arg2)
 DISPATCH_SCRIPT: list[tuple] = [
     # --- Call setup ---
     (0.0, "status_dialing", None, None),
-    (0.5, "transcript", "assistant", "Pozivam 112..."),
+    (0.5, "transcript", "assistant", STRINGS["calling_112"]),
     (2.0, "status_connected", None, None),
 
     # --- Dispatcher greeting ---
     (2.5, "transcript", "dispatch",
-     "Hitna služba, šta se desilo?"),
+     STRINGS["dispatcher_greeting"]),
 
     # --- Agent delivers brief ---
     (4.0, "get_brief_and_speak", None, None),
 
     # --- Dispatcher asks about consciousness ---
     (12.0, "transcript", "dispatch",
-     "Da li je pacijent pri svesti? Da li reaguje na pitanja?"),
-    (12.5, "queue_question", "Da li je pacijent pri svesti?", None),
+     STRINGS["dispatcher_ask_conscious"]),
+    (12.5, "queue_question", STRINGS["question_conscious"], None),
 
     # --- Wait for answer from user agent, then relay ---
-    (15.0, "relay_answer", "Da li je pacijent pri svesti?", None),
+    (15.0, "relay_answer", STRINGS["question_conscious"], None),
 
     # --- Dispatcher asks about age ---
     (20.0, "transcript", "dispatch",
-     "Koliko ima godina pacijentkinja?"),
-    (20.5, "queue_question", "Koliko ima godina?", None),
-    (23.0, "relay_answer", "Koliko ima godina?", None),
+     STRINGS["dispatcher_ask_age"]),
+    (20.5, "queue_question", STRINGS["question_age"], None),
+    (23.0, "relay_answer", STRINGS["question_age"], None),
 
     # --- Dispatcher confirms dispatch ---
     (28.0, "transcript", "dispatch",
-     "Razumem. Šaljemo ekipu hitne pomoći. Procenjeno vreme dolaska je 8 minuta. "
-     "Ostanite pored pacijentkinje i ne pomerajte je."),
+     STRINGS["dispatcher_confirm"]),
 
     # --- Agent confirms dispatch ---
     (30.0, "confirm", 8, None),
@@ -64,25 +87,25 @@ def _brief_to_speech(brief: str) -> str:
     parts = [p.strip() for p in brief.split("|")]
     sentences: list[str] = []
     for part in parts:
-        if part.startswith("Tip:"):
+        if part.startswith("Type:"):
             val = part.split(":", 1)[1].strip()
-            type_map = {"MEDICAL": "medicinskom", "FIRE": "požarnom", "POLICE": "policijskom", "GAS": "gasnom"}
-            sentences.append(f"Radi se o {type_map.get(val, val)} hitnom slučaju.")
-        elif part.startswith("Adresa:"):
+            type_map = {"MEDICAL": "medical", "FIRE": "fire", "POLICE": "police", "GAS": "gas"}
+            sentences.append(f"This is a {type_map.get(val, val)} emergency.")
+        elif part.startswith("Address:"):
             val = part.split(":", 1)[1].strip()
-            sentences.append(f"Lokacija je {val}.")
-        elif part.startswith("Broj zrtava:"):
+            sentences.append(f"The location is {val}.")
+        elif part.startswith("Victim count:"):
             val = part.split(":", 1)[1].strip()
-            sentences.append(f"Broj žrtava: {val}.")
-        elif part.startswith("Svest:"):
+            sentences.append(f"Number of victims: {val}.")
+        elif part.startswith("Conscious:"):
             val = part.split(":", 1)[1].strip()
-            sentences.append(f"Pacijent je pri svesti: {val}.")
-        elif part.startswith("Disanje:"):
+            sentences.append(f"Patient is conscious: {val}.")
+        elif part.startswith("Breathing:"):
             val = part.split(":", 1)[1].strip()
-            sentences.append(f"Pacijent diše: {val}.")
-        elif part.startswith("Detalji:"):
+            sentences.append(f"Patient is breathing: {val}.")
+        elif part.startswith("Details:"):
             val = part.split(":", 1)[1].strip()
-            sentences.append(f"Dodatni detalji: {val}.")
+            sentences.append(f"Additional details: {val}.")
     return " ".join(sentences)
 
 
@@ -136,8 +159,7 @@ async def run_demo_dispatch_agent(
         elif action == "get_brief_and_speak":
             brief = await tools.get_emergency_brief()
             speech = (
-                "Ovo je automatizovani poziv hitne službe u ime osobe koja ne može da govori. "
-                f"Imam informacije o hitnom slučaju. {_brief_to_speech(brief)}"
+                f"{STRINGS['opening_statement']} {_brief_to_speech(brief)}"
             )
             await broadcast(session_id, {
                 "type": "transcript",
@@ -153,7 +175,7 @@ async def run_demo_dispatch_agent(
             await broadcast(session_id, {
                 "type": "transcript",
                 "speaker": "assistant",
-                "text": "Jedan momenat, proveravam sa pozivaocem.",
+                "text": STRINGS["checking_with_caller"],
             })
             # Surface the question to the user's phone
             await broadcast(session_id, {
@@ -183,7 +205,7 @@ async def run_demo_dispatch_agent(
                 await broadcast(session_id, {
                     "type": "transcript",
                     "speaker": "assistant",
-                    "text": "Još čekam odgovor od pozivaoca...",
+                    "text": STRINGS["still_waiting"],
                 })
                 logger.warning("Demo Dispatch: no answer received for: %s", question)
 
@@ -193,7 +215,7 @@ async def run_demo_dispatch_agent(
             await broadcast(session_id, {
                 "type": "transcript",
                 "speaker": "assistant",
-                "text": f"Ekipa je poslata. Dolaze za {eta} minuta.",
+                "text": STRINGS["team_dispatched"].format(eta=eta),
             })
             logger.info("Demo Dispatch: confirmed dispatch, ETA %d min", eta)
 

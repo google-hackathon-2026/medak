@@ -652,8 +652,8 @@ class TestDispatchAgentTools:
         tools, _, _ = dispatch_tools
         brief = await tools.get_emergency_brief()
         assert "Knez Mihailova 5" in brief
-        # confirmed address should NOT have "(nepotvrdjeno)"
-        assert "nepotvrdjeno" not in brief
+        # confirmed address should NOT have "(unconfirmed)"
+        assert "unconfirmed" not in brief
 
     async def test_brief_contains_victim_count(self, dispatch_tools):
         tools, _, _ = dispatch_tools
@@ -663,9 +663,9 @@ class TestDispatchAgentTools:
     async def test_brief_contains_clinical_fields(self, dispatch_tools):
         tools, _, _ = dispatch_tools
         brief = await tools.get_emergency_brief()
-        # conscious=False → "ne", breathing=True → "da"
-        assert "ne" in brief.lower()
-        assert "da" in brief.lower()
+        # conscious=False → "no", breathing=True → "yes"
+        assert "no" in brief.lower()
+        assert "yes" in brief.lower()
 
     async def test_brief_contains_free_text(self, dispatch_tools):
         tools, _, _ = dispatch_tools
@@ -683,7 +683,7 @@ class TestDispatchAgentTools:
         brief = await tools.get_emergency_brief()
         assert "No session data" in brief
 
-    async def test_brief_unconfirmed_address_shows_nepotvrdjeno(self, store):
+    async def test_brief_unconfirmed_address_shows_unconfirmed(self, store):
         snap = _make_snapshot(
             location=Location(lat=44.8, lng=20.4, address="Some Addr", confirmed=False),
         )
@@ -695,7 +695,7 @@ class TestDispatchAgentTools:
 
         tools = DispatchAgentTools("test-session", store, broadcast)
         brief = await tools.get_emergency_brief()
-        assert "nepotvrdjeno" in brief
+        assert "unconfirmed" in brief
 
     async def test_brief_no_address_shows_gps(self, store):
         snap = _make_snapshot(
@@ -723,8 +723,7 @@ class TestDispatchAgentTools:
 
         tools = DispatchAgentTools("test-session", store, broadcast)
         brief = await tools.get_emergency_brief()
-        assert "nepoznat" in brief.lower()  # type unknown
-        assert "nepoznato" in brief.lower()  # conscious/breathing unknown
+        assert "unknown" in brief.lower()  # type/conscious/breathing unknown
 
     async def test_brief_with_conflicts(self, store):
         snap = _make_snapshot(

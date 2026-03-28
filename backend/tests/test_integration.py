@@ -900,7 +900,7 @@ async def test_dispatch_brief_shows_unconfirmed_address(store: SnapshotStore):
 
     tools = DispatchAgentTools("brief1", store, noop)
     brief = await tools.get_emergency_brief()
-    assert "nepotvrdjeno" in brief
+    assert "unconfirmed" in brief
 
 
 async def test_dispatch_brief_shows_confirmed_address(store: SnapshotStore):
@@ -917,7 +917,7 @@ async def test_dispatch_brief_shows_confirmed_address(store: SnapshotStore):
     tools = DispatchAgentTools("brief2", store, noop)
     brief = await tools.get_emergency_brief()
     assert "Knez Mihailova 5" in brief
-    assert "nepotvrdjeno" not in brief
+    assert "unconfirmed" not in brief
 
 
 def test_websocket_audio_message_type_accepted():

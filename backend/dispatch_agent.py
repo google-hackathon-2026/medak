@@ -43,22 +43,22 @@ class DispatchAgentTools:
         if loc.confirmed and loc.address:
             addr = loc.address
         elif loc.address:
-            addr = f"{loc.address} (nepotvrdjeno)"
+            addr = f"{loc.address} (unconfirmed)"
         else:
             addr = f"GPS: {loc.lat}, {loc.lng}"
 
         parts = [
-            f"Tip: {snap.emergency_type or 'nepoznat'}",
-            f"Adresa: {addr}",
-            f"Broj zrtava: {snap.victim_count if snap.victim_count is not None else 'nepoznat'}",
-            f"Svest: {'da' if snap.conscious else 'ne' if snap.conscious is not None else 'nepoznato'}",
-            f"Disanje: {'da' if snap.breathing else 'ne' if snap.breathing is not None else 'nepoznato'}",
+            f"Type: {snap.emergency_type or 'unknown'}",
+            f"Address: {addr}",
+            f"Victim count: {snap.victim_count if snap.victim_count is not None else 'unknown'}",
+            f"Conscious: {'yes' if snap.conscious else 'no' if snap.conscious is not None else 'unknown'}",
+            f"Breathing: {'yes' if snap.breathing else 'no' if snap.breathing is not None else 'unknown'}",
         ]
         if snap.free_text_details:
-            parts.append(f"Detalji: {'; '.join(snap.free_text_details)}")
+            parts.append(f"Details: {'; '.join(snap.free_text_details)}")
         if snap.input_conflicts:
-            conflicts = [f"{c.field}: korisnik kaze '{c.user_value}', okruzenje pokazuje '{c.env_value}'" for c in snap.input_conflicts]
-            parts.append(f"Neslaganja: {'; '.join(conflicts)}")
+            conflicts = [f"{c.field}: user says '{c.user_value}', environment shows '{c.env_value}'" for c in snap.input_conflicts]
+            parts.append(f"Conflicts: {'; '.join(conflicts)}")
 
         return " | ".join(parts)
 
@@ -142,18 +142,21 @@ DISPATCH_TOOL_DECLARATIONS = genai_types.Tool(
     ]
 )
 
-DISPATCH_AGENT_SYSTEM_PROMPT = """Ti si automatizovani servis za prenos hitnih poziva. Zoves 112 u ime osobe koja ne moze da govori.
+# Language constant — swap this to change the agent's language
+LANGUAGE = "English"
 
-PRAVILA:
-- Prva recenica: "Ovo je automatizovani poziv hitne sluzbe u ime osobe koja ne moze da govori. Imam detalje o hitnom slucaju i odgovoricu na vasa pitanja."
-- Odmah zatim izgovori ceo brifing koristeci get_emergency_brief().
-- Odgovaraj na pitanja operatera koristeci podatke iz brifinga.
-- Ako ne znas odgovor, reci "Jedan momenat, proveravam sa pozivaocem" i koristi queue_question_for_user().
-- Zatim periodcno proveravaj get_user_answer() dok ne dobijes odgovor.
-- Nikada ne spekulisi o nepotvdrjenim poljima. Reci "to jos nije potvrdjeno".
-- Ako postoje neslaganja (input_conflicts), prijavi ih operateru kao nerazresene.
-- Kada operator potvrdi slanje ekipe, pozovi confirm_dispatch(eta_minutes).
-- Govori srpski, jasno i koncizno."""
+DISPATCH_AGENT_SYSTEM_PROMPT = f"""You are an automated emergency call relay service. You are calling 112 on behalf of a person who cannot speak.
+
+RULES:
+- First sentence: "This is an automated emergency call on behalf of a person who cannot speak. I have details about the emergency and will answer your questions."
+- Immediately after, deliver the full briefing using get_emergency_brief().
+- Answer the operator's questions using data from the briefing.
+- If you don't know the answer, say "One moment, I'm checking with the caller" and use queue_question_for_user().
+- Then periodically check get_user_answer() until you receive an answer.
+- Never speculate about unconfirmed fields. Say "that has not been confirmed yet".
+- If there are conflicts (input_conflicts), report them to the operator as unresolved.
+- When the operator confirms dispatching a team, call confirm_dispatch(eta_minutes).
+- Speak {LANGUAGE}, clearly and concisely."""
 
 
 async def run_dispatch_agent(
@@ -221,7 +224,7 @@ async def run_dispatch_agent(
             await session.send_client_content(
                 turns=genai_types.Content(
                     role="user",
-                    parts=[genai_types.Part(text="Poziv je uspostavljen. Pocni sa brifingom.")],
+                    parts=[genai_types.Part(text="The call has been connected. Begin with the briefing.")],
                 )
             )
 
