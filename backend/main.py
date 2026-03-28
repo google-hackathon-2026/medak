@@ -1,6 +1,7 @@
 # backend/main.py
 from __future__ import annotations
 
+import json
 import uuid
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -14,6 +15,7 @@ from snapshot import (
     Location,
     SessionPhase,
     SnapshotStore,
+    UserInput,
 )
 
 
@@ -58,7 +60,6 @@ class SessionRegistry:
             self._connections.pop(session_id, None)
 
     async def broadcast(self, session_id: str, message: dict) -> None:
-        import json
         raw = json.dumps(message)
         dead: list[WebSocket] = []
         for ws in self._connections.get(session_id, []):
@@ -142,18 +143,17 @@ def create_app(
 
     @app.websocket("/api/session/{session_id}/ws")
     async def session_websocket(ws: WebSocket, session_id: str) -> None:
+        await ws.accept()
         snapshot = await store.load(session_id)
         if snapshot is None:
             await ws.close(code=4004, reason="Session not found")
             return
 
-        await ws.accept()
         await registry.add(session_id, ws)
 
         try:
             while True:
                 raw = await ws.receive_text()
-                import json
                 msg = json.loads(raw)
                 msg_type = msg.get("type")
 
@@ -169,7 +169,6 @@ def create_app(
                     pass
 
                 elif msg_type == "user_response":
-                    from snapshot import UserInput
                     await store.update(session_id, lambda s: s.user_input.append(
                         UserInput(
                             question="user_initiated",
