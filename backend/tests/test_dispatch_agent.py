@@ -79,3 +79,14 @@ async def test_confirm_dispatch(setup):
     snap = await store.load("s1")
     assert snap.call_status == CallStatus.CONFIRMED
     assert snap.eta_minutes == 8
+
+
+def test_run_dispatch_agent_accepts_bridge_none_kwarg():
+    """run_dispatch_agent must accept bridge=None without raising TypeError."""
+    from dispatch_agent import run_dispatch_agent
+    import inspect
+    sig = inspect.signature(run_dispatch_agent)
+    assert "bridge" in sig.parameters
+    param = sig.parameters["bridge"]
+    # Default must be None so callers without bridge= still work
+    assert param.default is None

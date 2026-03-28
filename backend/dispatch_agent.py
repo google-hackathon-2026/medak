@@ -160,10 +160,16 @@ async def run_dispatch_agent(
     session_id: str,
     store: SnapshotStore,
     broadcast: BroadcastFn,
+    bridge: "AudioBridge | None" = None,
 ) -> None:
     settings = get_settings()
     tools = DispatchAgentTools(session_id, store, broadcast)
-    client = genai.Client(vertexai=True, project=settings.google_cloud_project, location=settings.google_cloud_location, api_key=settings.google_api_key)
+    client = genai.Client(
+        vertexai=True,
+        project=settings.google_cloud_project,
+        location=settings.google_cloud_location,
+        api_key=settings.google_api_key,
+    )
 
     tool_handlers = {
         "get_emergency_brief": lambda _: tools.get_emergency_brief(),
@@ -193,6 +199,14 @@ async def run_dispatch_agent(
             await tools.update_call_status("DROPPED")
             return
 
+    # Wait for Twilio WebSocket to connect before starting Gemini (30s timeout)
+    if bridge is not None:
+        connected = await bridge.wait_connected(timeout=30.0)
+        if not connected:
+            logger.error("Twilio WebSocket never connected for session %s", session_id)
+            await tools.update_call_status("DROPPED")
+            return
+
     # Connect Gemini Live session
     config = genai_types.LiveConnectConfig(
         response_modalities=["AUDIO", "TEXT"],
@@ -209,35 +223,83 @@ async def run_dispatch_agent(
         ) as session:
             logger.info("Dispatch Agent connected for session %s", session_id)
 
-            # Instruct agent to begin
             await session.send(
                 input="Poziv je uspostavljen. Pocni sa brifingom.",
                 end_of_turn=True,
             )
 
-            async for response in session.receive():
-                if response.tool_call:
-                    for fc in response.tool_call.function_calls:
-                        handler = tool_handlers.get(fc.name)
-                        if handler:
-                            result = await handler(fc.args or {})
-                            await session.send(
-                                input=genai_types.LiveClientToolResponse(
-                                    function_responses=[
-                                        genai_types.FunctionResponse(
-                                            name=fc.name,
-                                            response={"result": result},
-                                        )
-                                    ]
-                                )
+            async def _sender() -> None:
+                """Forward inbound PCM 16kHz from Twilio to Gemini Live."""
+                if bridge is None:
+                    return
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(bridge.inbound.get(), timeout=0.1)
+                    except asyncio.TimeoutError:
+                        continue
+                    except asyncio.CancelledError:
+                        break
+                    try:
+                        await session.send(
+                            input=genai_types.LiveClientRealtimeInput(
+                                media_chunks=[
+                                    genai_types.Blob(
+                                        data=chunk,
+                                        mime_type="audio/pcm;rate=16000",
+                                    )
+                                ]
                             )
+                        )
+                    except Exception:
+                        logger.exception("Sender task error for session %s", session_id)
+                        break
 
-                if response.text:
-                    await broadcast(session_id, {
-                        "type": "transcript",
-                        "speaker": "assistant",
-                        "text": response.text,
-                    })
+            sender_task = asyncio.create_task(_sender())
+
+            try:
+                async for response in session.receive():
+                    # Audio output from Gemini → bridge.outbound
+                    if bridge is not None and response.server_content:
+                        turn = response.server_content.model_turn
+                        if turn:
+                            for part in turn.parts:
+                                if (
+                                    part.inline_data
+                                    and part.inline_data.mime_type
+                                    and part.inline_data.mime_type.startswith("audio/")
+                                ):
+                                    await bridge.outbound.put(part.inline_data.data)
+
+                    # Tool calls
+                    if response.tool_call:
+                        for fc in response.tool_call.function_calls:
+                            handler = tool_handlers.get(fc.name)
+                            if handler:
+                                result = await handler(fc.args or {})
+                                await session.send(
+                                    input=genai_types.LiveClientToolResponse(
+                                        function_responses=[
+                                            genai_types.FunctionResponse(
+                                                name=fc.name,
+                                                response={"result": result},
+                                            )
+                                        ]
+                                    )
+                                )
+
+                    # Text transcript
+                    if response.text:
+                        await broadcast(session_id, {
+                            "type": "transcript",
+                            "speaker": "assistant",
+                            "text": response.text,
+                        })
+            finally:
+                sender_task.cancel()
+                try:
+                    await sender_task
+                except asyncio.CancelledError:
+                    pass
 
     except Exception:
         logger.exception("Dispatch Agent error for session %s", session_id)
