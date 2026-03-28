@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     confidence_threshold: float = 0.85
     reconnect_max_attempts: int = 3
     backend_base_url: str = "http://localhost:8080"
+    demo_mode: bool = False
+    demo_scenario: str = "stroke_neighbor"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

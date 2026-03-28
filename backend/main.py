@@ -4,12 +4,13 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 from fastapi import FastAPI, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from audio_bridge import AudioBridgeRegistry
@@ -199,6 +200,8 @@ def create_app(
         finally:
             await registry.remove(session_id, ws)
 
+    # --- Twilio routes ---
+
     @app.post("/api/session/{session_id}/twilio/twiml")
     async def twilio_twiml(session_id: str) -> Response:
         snapshot = await store.load(session_id)
@@ -222,8 +225,6 @@ def create_app(
         CallStatus: str = Form(""),  # must match Twilio's exact field name casing
     ) -> dict:
         from snapshot import CallStatus as CS
-        # "queued" and "ringing" are intentionally omitted — they don't map to
-        # a meaningful internal state change; treated as no-ops.
         STATUS_MAP = {
             "in-progress": "CONNECTED",
             "completed": "COMPLETED",
@@ -237,7 +238,6 @@ def create_app(
             try:
                 await store.update(session_id, lambda s: setattr(s, "call_status", cs))
             except KeyError:
-                # Session doesn't exist; no-op
                 pass
         return {"ok": True}
 
@@ -256,8 +256,6 @@ def create_app(
         await ws.accept()
 
         async def send_outbound() -> None:
-            """Drain bridge.outbound and forward encoded audio to Twilio."""
-            # Wait until the 'start' event has been received and stream_sid is set
             try:
                 await asyncio.wait_for(bridge._connected.wait(), timeout=30.0)
             except asyncio.TimeoutError:
@@ -313,6 +311,27 @@ def create_app(
                 await sender_task
             except asyncio.CancelledError:
                 pass
+
+    # --- Demo routes ---
+
+    @app.get("/demo", response_class=HTMLResponse)
+    async def demo_dashboard() -> HTMLResponse:
+        html_path = Path(__file__).parent / "demo_dashboard.html"
+        html_content = html_path.read_text(encoding="utf-8")
+        return HTMLResponse(content=html_content)
+
+    @app.post("/api/demo/reset")
+    async def demo_reset() -> dict:
+        """Clear demo state — useful for repeated demo runs."""
+        try:
+            keys = []
+            async for key in store._redis.scan_iter(match="session:*"):
+                keys.append(key)
+            if keys:
+                await store._redis.delete(*keys)
+            return {"status": "ok", "cleared": len(keys)}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
     return app
 
