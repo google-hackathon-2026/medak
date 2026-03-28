@@ -36,3 +36,17 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def create_genai_client():
+    """Create a Gemini client using API key or Vertex AI depending on config."""
+    from google import genai
+
+    settings = get_settings()
+    if settings.google_api_key:
+        return genai.Client(api_key=settings.google_api_key)
+    return genai.Client(
+        vertexai=True,
+        project=settings.google_cloud_project,
+        location=settings.google_cloud_location,
+    )

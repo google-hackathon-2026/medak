@@ -8,7 +8,7 @@ from typing import Awaitable, Callable
 from google import genai
 from google.genai import types as genai_types
 
-from config import get_settings
+from config import create_genai_client, get_settings
 from snapshot import (
     EmergencyType,
     SnapshotStore,
@@ -213,7 +213,7 @@ async def run_user_agent(
 ) -> None:
     settings = get_settings()
     tools = UserAgentTools(session_id, store, broadcast)
-    client = genai.Client(vertexai=True, project=settings.google_cloud_project, location=settings.google_cloud_location, api_key=settings.google_api_key)
+    client = create_genai_client()
 
     tool_handlers = {
         "confirm_location": lambda args: tools.confirm_location(args["address"]),

@@ -1,5 +1,3 @@
-import { useEffect } from "react";
-import { DevSettings } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { PaperProvider } from "react-native-paper";
@@ -15,16 +13,6 @@ const screenOptions = {
 };
 
 export default function RootLayout() {
-  useEffect(() => {
-    if (__DEV__) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ds = DevSettings as any;
-      if (typeof ds.setIsShakeToShowDevMenuEnabled === "function") {
-        (ds.setIsShakeToShowDevMenuEnabled as (enabled: boolean) => void)(false);
-      }
-    }
-  }, []);
-
   return (
     <PaperProvider theme={theme}>
       <StatusBar style="light" />

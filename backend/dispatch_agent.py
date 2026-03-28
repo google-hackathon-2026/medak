@@ -9,7 +9,7 @@ from google import genai
 from google.genai import types as genai_types
 from twilio.rest import Client as TwilioClient
 
-from config import get_settings
+from config import create_genai_client, get_settings
 from snapshot import (
     CallStatus,
     EmergencySnapshot,
@@ -164,12 +164,7 @@ async def run_dispatch_agent(
 ) -> None:
     settings = get_settings()
     tools = DispatchAgentTools(session_id, store, broadcast)
-    client = genai.Client(
-        vertexai=True,
-        project=settings.google_cloud_project,
-        location=settings.google_cloud_location,
-        api_key=settings.google_api_key,
-    )
+    client = create_genai_client()
 
     tool_handlers = {
         "get_emergency_brief": lambda _: tools.get_emergency_brief(),

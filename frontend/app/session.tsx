@@ -19,10 +19,24 @@ import { useAppTheme } from "../lib/useAppTheme";
 import { SessionWebSocket } from "../lib/websocket";
 import { requestMicPermission, startMicCapture } from "../lib/audio";
 import { CameraView, useCameraPermissions, startFrameCapture } from "../lib/camera";
-import type { SessionPhase, TranscriptEntry } from "../lib/types";
+import type { EmergencyType, SessionPhase, TranscriptEntry } from "../lib/types";
+
+const EMERGENCY_NUMBERS: Record<EmergencyType, string> = {
+  AMBULANCE: "194",
+  POLICE: "192",
+  FIRE: "193",
+};
+
+const EMERGENCY_LABELS: Record<EmergencyType, string> = {
+  AMBULANCE: "Hitna pomoć",
+  POLICE: "Policija",
+  FIRE: "Vatrogasci",
+};
 
 export default function SessionScreen() {
-  const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
+  const { sessionId, emergencyType } = useLocalSearchParams<{ sessionId: string; emergencyType: EmergencyType }>();
+  const emergencyNumber = EMERGENCY_NUMBERS[emergencyType] || "194";
+  const emergencyLabel = EMERGENCY_LABELS[emergencyType] || "Hitna pomoć";
   const theme = useAppTheme();
 
   const [phase, setPhase] = useState<SessionPhase>("INTAKE");
@@ -162,12 +176,13 @@ export default function SessionScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor }]}>
-      {(phase === "INTAKE" || phase === "TRIAGE") &&
+      {(phase === "INTAKE" || phase === "TRIAGE" || phase === "LIVE_CALL") &&
         cameraPermission?.granted && (
           <CameraView
             ref={cameraRef}
-            style={styles.hiddenCamera}
+            style={styles.cameraPreview}
             facing="back"
+            animateShutter={false}
             onCameraReady={onCameraReady}
           />
         )}
@@ -189,6 +204,8 @@ export default function SessionScreen() {
           theme={theme}
           transcript={transcript}
           scrollRef={scrollRef}
+          emergencyLabel={emergencyLabel}
+          emergencyNumber={emergencyNumber}
         />
       )}
 
@@ -197,7 +214,7 @@ export default function SessionScreen() {
       )}
 
       {phase === "FAILED" && (
-        <FailedView theme={theme} message={failedMessage} />
+        <FailedView theme={theme} message={failedMessage} emergencyNumber={emergencyNumber} />
       )}
 
       {pendingQuestion && (phase === "TRIAGE" || phase === "LIVE_CALL") && (
@@ -421,9 +438,13 @@ function LiveCallView({
   theme,
   transcript,
   scrollRef,
+  emergencyLabel,
+  emergencyNumber,
 }: ThemeProp & {
   transcript: TranscriptEntry[];
   scrollRef: React.RefObject<ScrollView | null>;
+  emergencyLabel: string;
+  emergencyNumber: string;
 }) {
   return (
     <View style={styles.flex}>
@@ -435,7 +456,7 @@ function LiveCallView({
           variant="titleLarge"
           style={{ color: theme.colors.background, fontWeight: "700", textAlign: "center" }}
         >
-          Poziv u toku — 112
+          Poziv u toku — {emergencyLabel} ({emergencyNumber})
         </Text>
       </Surface>
 
@@ -488,7 +509,7 @@ function ResolvedView({ theme, etaMinutes }: ThemeProp & { etaMinutes: number | 
   );
 }
 
-function FailedView({ theme, message }: ThemeProp & { message: string | null }) {
+function FailedView({ theme, message, emergencyNumber }: ThemeProp & { message: string | null; emergencyNumber: string }) {
   return (
     <View style={styles.centeredView}>
       <Text style={[styles.statusIcon, { color: theme.colors.error }]}>!</Text>
@@ -510,7 +531,7 @@ function FailedView({ theme, message }: ThemeProp & { message: string | null }) 
           marginTop: 24,
         }}
       >
-        Zamolite nekoga u blizini da pozove 112
+        Zamolite nekoga u blizini da pozove {emergencyNumber}
       </Text>
       {message && (
         <Text
@@ -541,11 +562,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 32,
   },
-  hiddenCamera: {
-    position: "absolute",
-    width: 1,
-    height: 1,
-    opacity: 0,
+  cameraPreview: {
+    flex: 1,
   },
   statusBar: {
     padding: 16,

@@ -29,6 +29,7 @@ export function startFrameCapture(
         quality: 0.3,
         base64: true,
         skipProcessing: true,
+        shutterSound: false,
       });
 
       if (photo?.base64 && !stopped) {

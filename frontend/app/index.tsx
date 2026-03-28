@@ -47,7 +47,7 @@ export default function HomeScreen() {
 
         router.push({
           pathname: "/session",
-          params: { sessionId },
+          params: { sessionId, emergencyType: type },
         });
       } catch (err) {
         const message =

@@ -70,15 +70,18 @@ class SessionOrchestrator:
             await self._start_user_agent()
 
     async def _run_triage_loop(self) -> None:
+        last_confidence = None
         while True:
             if await self._check_triage_complete():
                 break
             snap = await self.store.load(self.session_id)
-            await self.broadcast(self.session_id, {
-                "type": "STATUS_UPDATE",
-                "phase": "TRIAGE",
-                "confidence": snap.confidence_score,
-            })
+            if snap.confidence_score != last_confidence:
+                await self.broadcast(self.session_id, {
+                    "type": "STATUS_UPDATE",
+                    "phase": "TRIAGE",
+                    "confidence": snap.confidence_score,
+                })
+                last_confidence = snap.confidence_score
             await asyncio.sleep(1)
 
     async def _check_triage_complete(self) -> bool:
@@ -174,18 +177,31 @@ class SessionOrchestrator:
         })
         logger.error("Session %s: -> FAILED: %s", self.session_id, reason)
 
+    def _launch_agent(self, name: str, run_fn) -> asyncio.Task:
+        async def _run() -> None:
+            try:
+                await run_fn(self.session_id, self.store, self.broadcast)
+            except Exception:
+                logger.exception("%s crashed for session %s", name, self.session_id)
+
+        return asyncio.create_task(_run())
+
     async def _start_user_agent(self) -> None:
         from user_agent import run_user_agent
-        self._user_agent_task = asyncio.create_task(
-            run_user_agent(self.session_id, self.store, self.broadcast)
-        )
+        self._user_agent_task = self._launch_agent("User Agent", run_user_agent)
 
     async def _start_dispatch_agent(self) -> None:
         from dispatch_agent import run_dispatch_agent
+
         bridge = None
         if self.bridge_registry is not None:
             bridge = self.bridge_registry.create(self.session_id)
-        self._dispatch_agent_task = asyncio.create_task(
-            run_dispatch_agent(self.session_id, self.store, self.broadcast, bridge=bridge)
-        )
+
+        async def _run() -> None:
+            try:
+                await run_dispatch_agent(self.session_id, self.store, self.broadcast, bridge=bridge)
+            except Exception:
+                logger.exception("Dispatch Agent crashed for session %s", self.session_id)
+
+        self._dispatch_agent_task = asyncio.create_task(_run())
         await asyncio.sleep(0)  # yield to let the task start before returning
