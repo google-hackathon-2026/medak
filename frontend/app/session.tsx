@@ -4,8 +4,12 @@ import {
   StyleSheet,
   ScrollView,
   TextInput,
+  Alert,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Text,
@@ -13,6 +17,7 @@ import {
   Surface,
   ProgressBar,
   ActivityIndicator,
+  Icon,
 } from "react-native-paper";
 import * as Haptics from "expo-haptics";
 import { useAppTheme } from "../lib/useAppTheme";
@@ -36,6 +41,7 @@ const EMERGENCY_LABELS: Record<EmergencyType, string> = {
 
 export default function SessionScreen() {
   const { sessionId, emergencyType } = useLocalSearchParams<{ sessionId: string; emergencyType: EmergencyType }>();
+  const router = useRouter();
   const emergencyNumber = EMERGENCY_NUMBERS[emergencyType] || "194";
   const emergencyLabel = EMERGENCY_LABELS[emergencyType] || STRINGS.emergency_ambulance;
   const theme = useAppTheme();
@@ -166,6 +172,28 @@ export default function SessionScreen() {
     handleUserResponse("TEXT", userInput.trim());
   }, [userInput, handleUserResponse]);
 
+  const handleEndCall = useCallback(() => {
+    Alert.alert(
+      "Prekini poziv?",
+      "Da li ste sigurni da želite da prekinete poziv?",
+      [
+        { text: "Otkaži", style: "cancel" },
+        {
+          text: "Prekini",
+          style: "destructive",
+          onPress: () => {
+            wsRef.current?.sendEndSession();
+            wsRef.current?.disconnect();
+            stopMicRef.current?.();
+            stopCameraRef.current?.stop();
+            if (questionTimerRef.current) clearTimeout(questionTimerRef.current);
+            router.replace("/");
+          },
+        },
+      ]
+    );
+  }, [router]);
+
   const backgroundColor =
     phase === "RESOLVED"
       ? theme.custom.resolvedBackground
@@ -177,108 +205,146 @@ export default function SessionScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor }]}>
-      {(phase === "INTAKE" || phase === "TRIAGE" || phase === "LIVE_CALL") &&
-        cameraPermission?.granted && (
-          <CameraView
-            ref={cameraRef}
-            style={styles.cameraPreview}
-            facing="back"
-            animateShutter={false}
-            onCameraReady={onCameraReady}
-          />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        {/* Main content area */}
+        <View style={styles.flex}>
+          {(phase === "INTAKE" || phase === "TRIAGE" || phase === "LIVE_CALL") &&
+            cameraPermission?.granted && (
+              <CameraView
+                ref={cameraRef}
+                style={styles.cameraPreview}
+                facing="back"
+                animateShutter={false}
+                onCameraReady={onCameraReady}
+              />
+            )}
+
+          {phase === "INTAKE" && <IntakeView theme={theme} />}
+
+          {phase === "TRIAGE" && (
+            <TriageView
+              theme={theme}
+              confidence={confidence}
+              transcript={transcript}
+              scrollRef={scrollRef}
+              wsConnected={wsConnected}
+            />
+          )}
+
+          {phase === "LIVE_CALL" && (
+            <LiveCallView
+              theme={theme}
+              transcript={transcript}
+              scrollRef={scrollRef}
+              emergencyLabel={emergencyLabel}
+              emergencyNumber={emergencyNumber}
+              emergencyType={emergencyType}
+            />
+          )}
+
+          {phase === "RESOLVED" && (
+            <ResolvedView theme={theme} etaMinutes={etaMinutes} />
+          )}
+
+          {phase === "FAILED" && (
+            <FailedView theme={theme} message={failedMessage} emergencyNumber={emergencyNumber} />
+          )}
+        </View>
+
+        {/* Question banner + persistent chat bar */}
+        {(phase === "TRIAGE" || phase === "LIVE_CALL") && (
+          <>
+            {pendingQuestion && (
+              <Surface
+                style={[
+                  styles.questionBanner,
+                  { backgroundColor: theme.colors.surface },
+                ]}
+                elevation={4}
+              >
+                <Text
+                  variant="titleMedium"
+                  style={{ color: theme.custom.questionHighlight, marginBottom: 12 }}
+                >
+                  {pendingQuestion}
+                </Text>
+                <View style={styles.questionButtons}>
+                  <Button
+                    mode="contained"
+                    onPress={() => handleUserResponse("TAP", "DA")}
+                    style={styles.tapButton}
+                    buttonColor={theme.custom.success}
+                  >
+                    DA
+                  </Button>
+                  <Button
+                    mode="contained"
+                    onPress={() => handleUserResponse("TAP", "NE")}
+                    style={styles.tapButton}
+                    buttonColor={theme.colors.error}
+                  >
+                    NE
+                  </Button>
+                </View>
+              </Surface>
+            )}
+
+            <View
+              style={[
+                styles.chatInputBar,
+                { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.outline },
+              ]}
+            >
+              <TextInput
+                value={userInput}
+                onChangeText={setUserInput}
+                placeholder="Unesite poruku..."
+                placeholderTextColor={theme.colors.onSurfaceVariant}
+                style={[
+                  styles.chatTextInput,
+                  {
+                    color: theme.colors.onSurface,
+                    borderColor: theme.colors.outline,
+                    backgroundColor: theme.colors.surfaceVariant,
+                  },
+                ]}
+                onSubmitEditing={handleTextSubmit}
+                returnKeyType="send"
+              />
+              <Button
+                mode="contained"
+                onPress={handleTextSubmit}
+                disabled={!userInput.trim()}
+                compact
+                style={styles.chatSendButton}
+              >
+                Pošalji
+              </Button>
+            </View>
+          </>
         )}
 
-      {phase === "INTAKE" && <IntakeView theme={theme} />}
-
-      {phase === "TRIAGE" && (
-        <TriageView
-          theme={theme}
-          confidence={confidence}
-          transcript={transcript}
-          scrollRef={scrollRef}
-          wsConnected={wsConnected}
-        />
-      )}
-
-      {phase === "LIVE_CALL" && (
-        <LiveCallView
-          theme={theme}
-          transcript={transcript}
-          scrollRef={scrollRef}
-          emergencyLabel={emergencyLabel}
-          emergencyNumber={emergencyNumber}
-        />
-      )}
-
-      {phase === "RESOLVED" && (
-        <ResolvedView theme={theme} etaMinutes={etaMinutes} />
-      )}
-
-      {phase === "FAILED" && (
-        <FailedView theme={theme} message={failedMessage} emergencyNumber={emergencyNumber} />
-      )}
-
-      {pendingQuestion && (phase === "TRIAGE" || phase === "LIVE_CALL") && (
-        <Surface
-          style={[
-            styles.questionOverlay,
-            { backgroundColor: theme.colors.surface },
-          ]}
-          elevation={4}
-        >
-          <Text
-            variant="titleMedium"
-            style={{ color: theme.custom.questionHighlight, marginBottom: 12 }}
-          >
-            {pendingQuestion}
-          </Text>
-
-          <View style={styles.questionButtons}>
+        {/* End call button */}
+        {(phase === "INTAKE" || phase === "TRIAGE" || phase === "LIVE_CALL") && (
+          <View style={styles.endCallContainer}>
             <Button
               mode="contained"
-              onPress={() => handleUserResponse("TAP", "DA")}
-              style={styles.tapButton}
-              buttonColor={theme.custom.success}
-            >
-              {STRINGS.yes}
-            </Button>
-            <Button
-              mode="contained"
-              onPress={() => handleUserResponse("TAP", "NE")}
-              style={styles.tapButton}
+              onPress={handleEndCall}
               buttonColor={theme.colors.error}
+              textColor={theme.colors.onError}
+              icon="phone-hangup"
+              contentStyle={styles.endCallContent}
+              labelStyle={styles.endCallLabel}
+              style={styles.endCallButton}
             >
-              {STRINGS.no}
+              Prekini poziv
             </Button>
           </View>
-
-          <View style={styles.textInputRow}>
-            <TextInput
-              value={userInput}
-              onChangeText={setUserInput}
-              placeholder={STRINGS.or_enter_response}
-              placeholderTextColor={theme.colors.onSurfaceVariant}
-              style={[
-                styles.textInput,
-                {
-                  color: theme.colors.onSurface,
-                  borderColor: theme.colors.outline,
-                },
-              ]}
-              onSubmitEditing={handleTextSubmit}
-              returnKeyType="send"
-            />
-            <Button
-              mode="contained"
-              onPress={handleTextSubmit}
-              disabled={!userInput.trim()}
-              compact
-            >
-              {STRINGS.send}
-            </Button>
-          </View>
-        </Surface>
-      )}
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -441,25 +507,56 @@ function LiveCallView({
   scrollRef,
   emergencyLabel,
   emergencyNumber,
+  emergencyType,
 }: ThemeProp & {
   transcript: TranscriptEntry[];
   scrollRef: React.RefObject<ScrollView | null>;
   emergencyLabel: string;
   emergencyNumber: string;
+  emergencyType: EmergencyType;
 }) {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pulseAnim]);
+
+  const bannerColor = theme.custom[emergencyType] || theme.custom.AMBULANCE;
+
   return (
     <View style={styles.flex}>
-      <Surface
-        style={[styles.callHeader, { backgroundColor: theme.custom.warning }]}
-        elevation={2}
-      >
-        <Text
-          variant="titleLarge"
-          style={{ color: theme.colors.background, fontWeight: "700", textAlign: "center" }}
-        >
-          {STRINGS.call_in_progress} — {emergencyLabel} ({emergencyNumber})
-        </Text>
-      </Surface>
+      <View style={[styles.liveCallBanner, { backgroundColor: bannerColor }]}>
+        <View style={styles.liveCallBannerRow}>
+          <View style={styles.pulseDotContainer}>
+            <Animated.View
+              style={[styles.pulseDotOuter, { opacity: pulseAnim }]}
+            />
+            <View style={styles.pulseDotInner} />
+          </View>
+          <View style={styles.liveCallBannerText}>
+            <Text
+              variant="titleLarge"
+              style={{ color: theme.colors.onPrimary, fontWeight: "700" }}
+            >
+              Poziv u toku
+            </Text>
+            <Text
+              variant="bodyMedium"
+              style={{ color: theme.colors.onPrimary, opacity: 0.85 }}
+            >
+              {emergencyLabel} — {emergencyNumber}
+            </Text>
+          </View>
+          <Icon source="phone-in-talk" size={28} color={theme.colors.onPrimary} />
+        </View>
+      </View>
 
       <TranscriptList
         transcript={transcript}
@@ -608,45 +705,93 @@ const styles = StyleSheet.create({
   bubbleRight: {
     alignSelf: "flex-end",
   },
-  callHeader: {
-    padding: 16,
-    margin: 16,
-    borderRadius: 12,
+  liveCallBanner: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
-  questionOverlay: {
+  liveCallBannerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  liveCallBannerText: {
+    flex: 1,
+  },
+  pulseDotContainer: {
+    width: 16,
+    height: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pulseDotOuter: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.4)",
     position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  },
+  pulseDotInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#ffffff",
+  },
+  questionBanner: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
   questionButtons: {
     flexDirection: "row",
     gap: 12,
-    marginBottom: 12,
   },
   tapButton: {
     flex: 1,
     minHeight: 48,
   },
-  textInputRow: {
+  chatInputBar: {
     flexDirection: "row",
-    gap: 8,
     alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  textInput: {
+  chatTextInput: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     fontSize: 16,
     minHeight: 48,
+  },
+  chatSendButton: {
+    minHeight: 48,
+    justifyContent: "center",
   },
   statusIcon: {
     fontSize: 80,
     marginBottom: 16,
     fontWeight: "900",
+  },
+  endCallContainer: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  endCallButton: {
+    borderRadius: 28,
+    minWidth: 200,
+  },
+  endCallContent: {
+    height: 56,
+    paddingHorizontal: 24,
+  },
+  endCallLabel: {
+    fontSize: 18,
+    fontWeight: "700",
+    letterSpacing: 1,
   },
 });

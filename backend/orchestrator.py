@@ -8,6 +8,7 @@ from typing import Callable, Awaitable
 
 from audio_bridge import AudioBridgeRegistry
 from config import get_settings
+from user_agent import UserMediaRegistry
 from snapshot import (
     CallStatus,
     EmergencySnapshot,
@@ -31,12 +32,14 @@ class SessionOrchestrator:
         confidence_threshold: float | None = None,
         max_reconnects: int | None = None,
         bridge_registry: AudioBridgeRegistry | None = None,
+        user_media_registry: UserMediaRegistry | None = None,
     ) -> None:
         self.session_id = session_id
         self.store = store
         self.broadcast = broadcast
         self.start_agents = start_agents
         self.bridge_registry = bridge_registry
+        self.user_media_registry = user_media_registry
 
         settings = get_settings()
         self.triage_timeout = triage_timeout or settings.triage_timeout_seconds
@@ -46,15 +49,26 @@ class SessionOrchestrator:
         self._user_agent_task: asyncio.Task | None = None
         self._dispatch_agent_task: asyncio.Task | None = None
 
+    async def _is_ended(self) -> bool:
+        snap = await self.store.load(self.session_id)
+        return snap is None or snap.phase in (SessionPhase.FAILED, SessionPhase.RESOLVED)
+
     async def run(self) -> None:
         try:
             await self._transition_to_triage()
             await self._run_triage_loop()
+            if await self._is_ended():
+                return
             await self._transition_to_live_call()
             await self._run_live_call_loop()
         except Exception:
             logger.exception("Orchestrator error for session %s", self.session_id)
             await self._transition_to_failed("Internal error")
+        finally:
+            if self.bridge_registry is not None:
+                self.bridge_registry.remove(self.session_id)
+            if self.user_media_registry is not None:
+                self.user_media_registry.remove(self.session_id)
 
     async def _transition_to_triage(self) -> None:
         await self.store.update(self.session_id, lambda s: setattr(s, "phase", SessionPhase.TRIAGE))
@@ -87,6 +101,10 @@ class SessionOrchestrator:
     async def _check_triage_complete(self) -> bool:
         snap = await self.store.load(self.session_id)
         if snap is None:
+            return True
+
+        if snap.phase == SessionPhase.FAILED:
+            logger.info("Session %s: ended by user during triage", self.session_id)
             return True
 
         if snap.confidence_score >= self.confidence_threshold:
@@ -124,6 +142,8 @@ class SessionOrchestrator:
     async def _run_live_call_loop(self) -> None:
         reconnect_count = 0
         while True:
+            if await self._is_ended():
+                return
             result = await self._check_call_status()
             if result == "RESOLVED":
                 return
@@ -195,15 +215,6 @@ class SessionOrchestrator:
         })
         logger.error("Session %s: -> FAILED: %s", self.session_id, reason)
 
-    def _launch_agent(self, name: str, run_fn) -> asyncio.Task:
-        async def _run() -> None:
-            try:
-                await run_fn(self.session_id, self.store, self.broadcast)
-            except Exception:
-                logger.exception("%s crashed for session %s", name, self.session_id)
-
-        return asyncio.create_task(_run())
-
     async def _start_user_agent(self) -> None:
         settings = get_settings()
         if settings.demo_mode:
@@ -216,7 +227,15 @@ class SessionOrchestrator:
             )
         else:
             from user_agent import run_user_agent
-            self._user_agent_task = self._launch_agent("User Agent", run_user_agent)
+
+            media_relay = None
+            if self.user_media_registry is not None:
+                media_relay = self.user_media_registry.create(self.session_id)
+
+            self._user_agent_task = self._launch_agent(
+                "User Agent",
+                run_user_agent(self.session_id, self.store, self.broadcast, media_relay=media_relay),
+            )
 
     async def _start_dispatch_agent(self) -> None:
         # Cancel any still-running previous dispatch agent

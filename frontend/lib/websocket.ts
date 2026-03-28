@@ -60,6 +60,10 @@ export class SessionWebSocket {
     this.send({ type: "user_response", response_type: responseType, value });
   }
 
+  sendEndSession(): void {
+    this.send({ type: "end_session" });
+  }
+
   private send(msg: WSMessageToServer): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));

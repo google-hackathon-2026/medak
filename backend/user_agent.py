@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 from typing import Awaitable, Callable
 
@@ -209,10 +210,39 @@ INFORMATION PRIORITY:
 If a question appears in dispatch_questions, handle it immediately."""
 
 
+class UserMediaRelay:
+    """Per-session queue for forwarding user audio/video/text to the User Agent."""
+
+    def __init__(self) -> None:
+        self.queue: asyncio.Queue[dict] = asyncio.Queue()
+
+    async def put(self, msg: dict) -> None:
+        await self.queue.put(msg)
+
+
+class UserMediaRegistry:
+    """Maps session_id → UserMediaRelay. Stored in app.state."""
+
+    def __init__(self) -> None:
+        self._relays: dict[str, UserMediaRelay] = {}
+
+    def create(self, session_id: str) -> UserMediaRelay:
+        relay = UserMediaRelay()
+        self._relays[session_id] = relay
+        return relay
+
+    def get(self, session_id: str) -> UserMediaRelay | None:
+        return self._relays.get(session_id)
+
+    def remove(self, session_id: str) -> None:
+        self._relays.pop(session_id, None)
+
+
 async def run_user_agent(
     session_id: str,
     store: SnapshotStore,
     broadcast: BroadcastFn,
+    media_relay: UserMediaRelay | None = None,
 ) -> None:
     settings = get_settings()
     tools = UserAgentTools(session_id, store, broadcast)
@@ -263,29 +293,96 @@ async def run_user_agent(
                     )
                 )
 
-            async for response in session.receive():
-                # Handle tool calls
-                if response.tool_call:
-                    for fc in response.tool_call.function_calls:
-                        handler = tool_handlers.get(fc.name)
-                        if handler:
-                            result = await handler(fc.args or {})
-                            await session.send_tool_response(
-                                function_responses=[
-                                    genai_types.FunctionResponse(
-                                        name=fc.name,
-                                        response={"result": result},
-                                    )
-                                ]
+            async def _media_sender() -> None:
+                """Forward user audio/video/text from the phone to Gemini."""
+                if media_relay is None:
+                    return
+                while True:
+                    try:
+                        msg = await media_relay.queue.get()
+                    except asyncio.CancelledError:
+                        break
+                    try:
+                        msg_type = msg.get("type")
+                        if msg_type == "audio":
+                            audio_bytes = base64.b64decode(msg["data"])
+                            await session.send(
+                                input=genai_types.LiveClientRealtimeInput(
+                                    media_chunks=[
+                                        genai_types.Blob(
+                                            data=audio_bytes,
+                                            mime_type="audio/pcm;rate=16000",
+                                        )
+                                    ]
+                                )
                             )
+                        elif msg_type == "video_frame":
+                            image_bytes = base64.b64decode(msg["data"])
+                            await session.send(
+                                input=genai_types.LiveClientRealtimeInput(
+                                    media_chunks=[
+                                        genai_types.Blob(
+                                            data=image_bytes,
+                                            mime_type="image/jpeg",
+                                        )
+                                    ]
+                                )
+                            )
+                        elif msg_type == "user_response":
+                            text = msg.get("value", "")
+                            await session.send_client_content(
+                                turns=genai_types.Content(
+                                    role="user",
+                                    parts=[genai_types.Part(text=f"Korisnik je odgovorio: {text}")],
+                                )
+                            )
+                    except Exception:
+                        logger.exception("Media sender error for session %s", session_id)
 
-                # Handle text responses — broadcast as transcript
-                if response.text:
-                    await broadcast(session_id, {
-                        "type": "transcript",
-                        "speaker": "assistant",
-                        "text": response.text,
-                    })
+            sender_task = asyncio.create_task(_media_sender())
+
+            try:
+                async for response in session.receive():
+                    # Handle tool calls
+                    if response.tool_call:
+                        for fc in response.tool_call.function_calls:
+                            handler = tool_handlers.get(fc.name)
+                            if handler:
+                                try:
+                                    result = await handler(fc.args or {})
+                                    await session.send_tool_response(
+                                        function_responses=[{
+                                            "id": fc.id,
+                                            "name": fc.name,
+                                            "response": {"result": result},
+                                        }]
+                                    )
+                                except Exception:
+                                    logger.warning(
+                                        "Tool call %s failed for session %s, continuing",
+                                        fc.name, session_id, exc_info=True,
+                                    )
+                                    await session.send_tool_response(
+                                        function_responses=[{
+                                            "id": fc.id,
+                                            "name": fc.name,
+                                            "response": {"result": "ERROR"},
+                                        }]
+                                    )
+
+                    # Handle text responses — broadcast as transcript
+                    if response.text:
+                        await broadcast(session_id, {
+                            "type": "transcript",
+                            "speaker": "assistant",
+                            "text": response.text,
+                        })
+            finally:
+                sender_task.cancel()
+                try:
+                    await sender_task
+                except asyncio.CancelledError:
+                    pass
 
     except Exception:
         logger.exception("User Agent error for session %s", session_id)

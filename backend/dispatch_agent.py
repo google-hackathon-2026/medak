@@ -99,11 +99,6 @@ class DispatchAgentTools:
 DISPATCH_TOOL_DECLARATIONS = genai_types.Tool(
     function_declarations=[
         genai_types.FunctionDeclaration(
-            name="get_emergency_brief",
-            description="Get the full emergency briefing from user data. Call at start and on reconnect.",
-            parameters=genai_types.Schema(type="OBJECT", properties={}),
-        ),
-        genai_types.FunctionDeclaration(
             name="queue_question_for_user",
             description="Ask the user a question through the relay. Use when operator asks something not in the brief.",
             parameters=genai_types.Schema(
@@ -122,15 +117,6 @@ DISPATCH_TOOL_DECLARATIONS = genai_types.Tool(
             ),
         ),
         genai_types.FunctionDeclaration(
-            name="update_call_status",
-            description="Update the call status: DIALING, CONNECTED, DROPPED.",
-            parameters=genai_types.Schema(
-                type="OBJECT",
-                properties={"status": genai_types.Schema(type="STRING", enum=["DIALING", "CONNECTED", "DROPPED"])},
-                required=["status"],
-            ),
-        ),
-        genai_types.FunctionDeclaration(
             name="confirm_dispatch",
             description="Confirm that emergency services are dispatched with ETA.",
             parameters=genai_types.Schema(
@@ -142,21 +128,21 @@ DISPATCH_TOOL_DECLARATIONS = genai_types.Tool(
     ]
 )
 
-# Language constant — swap this to change the agent's language
-LANGUAGE = "English"
+DISPATCH_AGENT_SYSTEM_PROMPT_TEMPLATE = """Ti si automatizovani servis za prenos hitnih poziva. Zoves 112 u ime osobe koja ne moze da govori.
 
-DISPATCH_AGENT_SYSTEM_PROMPT = f"""You are an automated emergency call relay service. You are calling 112 on behalf of a person who cannot speak.
+BRIFING O HITNOM SLUCAJU:
+{brief}
 
-RULES:
-- First sentence: "This is an automated emergency call on behalf of a person who cannot speak. I have details about the emergency and will answer your questions."
-- Immediately after, deliver the full briefing using get_emergency_brief().
-- Answer the operator's questions using data from the briefing.
-- If you don't know the answer, say "One moment, I'm checking with the caller" and use queue_question_for_user().
-- Then periodically check get_user_answer() until you receive an answer.
-- Never speculate about unconfirmed fields. Say "that has not been confirmed yet".
-- If there are conflicts (input_conflicts), report them to the operator as unresolved.
-- When the operator confirms dispatching a team, call confirm_dispatch(eta_minutes).
-- Speak {LANGUAGE}, clearly and concisely."""
+PRAVILA:
+- Prva recenica: "Ovo je automatizovani poziv hitne sluzbe u ime osobe koja ne moze da govori."
+- Zatim izgovori brifing iz podataka iznad JEDNOM — kratko i jasno.
+- Posle brifinga SACEKAJ odgovor operatera. Ne ponavljaj brifing.
+- Odgovaraj na pitanja operatera koristeci podatke iz brifinga.
+- Ako ne znas odgovor, reci "Jedan momenat, proveravam sa pozivaocem" i koristi queue_question_for_user().
+- Nikada ne spekulisi o nepotvdrjenim poljima. Reci "to jos nije potvrdjeno".
+- Kada operator potvrdi slanje ekipe, pozovi confirm_dispatch(eta_minutes).
+- Govori srpski, jasno i koncizno.
+- VAZNO: Kada operator govori, prestani da pricas i slusaj. Odgovaraj samo na pitanja."""
 
 
 async def run_dispatch_agent(
@@ -170,12 +156,13 @@ async def run_dispatch_agent(
     client = create_genai_client()
 
     tool_handlers = {
-        "get_emergency_brief": lambda _: tools.get_emergency_brief(),
         "queue_question_for_user": lambda args: tools.queue_question_for_user(args["question"]),
         "get_user_answer": lambda args: tools.get_user_answer(args["question"]),
-        "update_call_status": lambda args: tools.update_call_status(args["status"]),
         "confirm_dispatch": lambda args: tools.confirm_dispatch(args["eta_minutes"]),
     }
+
+    # Pre-load the emergency brief for the system prompt
+    brief = await tools.get_emergency_brief()
 
     # Initiate Twilio call
     twilio_client = None
@@ -205,13 +192,22 @@ async def run_dispatch_agent(
             await tools.update_call_status("DROPPED")
             return
 
-    # Connect Gemini Live session
+    # Connect Gemini Live session — brief pre-loaded in prompt, tools for Q&A relay
+    system_prompt = DISPATCH_AGENT_SYSTEM_PROMPT_TEMPLATE.format(brief=brief)
     config = genai_types.LiveConnectConfig(
         response_modalities=["AUDIO"],
         system_instruction=genai_types.Content(
-            parts=[genai_types.Part(text=DISPATCH_AGENT_SYSTEM_PROMPT)]
+            parts=[genai_types.Part(text=system_prompt)]
         ),
         tools=[DISPATCH_TOOL_DECLARATIONS],
+        realtime_input_config=genai_types.RealtimeInputConfig(
+            automatic_activity_detection=genai_types.AutomaticActivityDetection(
+                start_of_speech_sensitivity=genai_types.StartSensitivity.START_SENSITIVITY_HIGH,
+                end_of_speech_sensitivity=genai_types.EndSensitivity.END_SENSITIVITY_LOW,
+                silence_duration_ms=500,
+            ),
+            activity_handling=genai_types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+        ),
     )
 
     try:
@@ -224,7 +220,7 @@ async def run_dispatch_agent(
             await session.send_client_content(
                 turns=genai_types.Content(
                     role="user",
-                    parts=[genai_types.Part(text="The call has been connected. Begin with the briefing.")],
+                    parts=[genai_types.Part(text="Poziv je uspostavljen. Pocni sa brifingom.")],
                 )
             )
 
@@ -234,9 +230,7 @@ async def run_dispatch_agent(
                     return
                 while True:
                     try:
-                        chunk = await asyncio.wait_for(bridge.inbound.get(), timeout=0.1)
-                    except asyncio.TimeoutError:
-                        continue
+                        chunk = await bridge.inbound.get()
                     except asyncio.CancelledError:
                         break
                     try:
@@ -254,6 +248,18 @@ async def run_dispatch_agent(
 
             try:
                 async for response in session.receive():
+                    # Handle interruption — flush outbound audio queue
+                    if (
+                        response.server_content
+                        and response.server_content.interrupted
+                        and bridge is not None
+                    ):
+                        while not bridge.outbound.empty():
+                            try:
+                                bridge.outbound.get_nowait()
+                            except asyncio.QueueEmpty:
+                                break
+
                     # Audio output from Gemini → bridge.outbound
                     if bridge is not None and response.server_content:
                         turn = response.server_content.model_turn
@@ -266,20 +272,33 @@ async def run_dispatch_agent(
                                 ):
                                     await bridge.outbound.put(part.inline_data.data)
 
-                    # Tool calls
+                    # Tool calls — wrapped in try/except so flaky native audio
+                    # tool support doesn't crash the entire session
                     if response.tool_call:
                         for fc in response.tool_call.function_calls:
                             handler = tool_handlers.get(fc.name)
                             if handler:
-                                result = await handler(fc.args or {})
-                                await session.send_tool_response(
-                                    function_responses=[
-                                        genai_types.FunctionResponse(
-                                            name=fc.name,
-                                            response={"result": result},
-                                        )
-                                    ]
-                                )
+                                try:
+                                    result = await handler(fc.args or {})
+                                    await session.send_tool_response(
+                                        function_responses=[{
+                                            "id": fc.id,
+                                            "name": fc.name,
+                                            "response": {"result": result},
+                                        }]
+                                    )
+                                except Exception:
+                                    logger.warning(
+                                        "Tool call %s failed for session %s, continuing",
+                                        fc.name, session_id, exc_info=True,
+                                    )
+                                    await session.send_tool_response(
+                                        function_responses=[{
+                                            "id": fc.id,
+                                            "name": fc.name,
+                                            "response": {"result": "ERROR"},
+                                        }]
+                                    )
 
                     # Text transcript (from tool call text output)
                     if response.text:

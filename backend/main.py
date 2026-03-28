@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ from pydantic import BaseModel
 
 from audio_bridge import AudioBridgeRegistry
 from config import get_settings
+from user_agent import UserMediaRegistry
 from snapshot import (
     EmergencySnapshot,
     Location,
@@ -108,6 +110,8 @@ def create_app(
         bridge_registry = AudioBridgeRegistry()
     app.state.bridge_registry = bridge_registry  # used by Twilio Media Streams WebSocket
 
+    app.state.user_media_registry = UserMediaRegistry()
+
     # --- Routes ---
 
     @app.get("/api/health")
@@ -137,6 +141,7 @@ def create_app(
             store=store,
             broadcast=registry.broadcast,
             bridge_registry=app.state.bridge_registry,
+            user_media_registry=app.state.user_media_registry,
         )
         asyncio.create_task(orch.run())
 
@@ -178,22 +183,28 @@ def create_app(
                 if msg_type == "ping":
                     await ws.send_text(json.dumps({"type": "pong"}))
 
-                elif msg_type == "audio":
-                    # TODO: forward to User Agent (Task 6)
-                    pass
+                elif msg_type in ("audio", "video_frame", "user_response"):
+                    # Forward to User Agent's Gemini session
+                    relay = app.state.user_media_registry.get(session_id)
+                    if relay is not None:
+                        await relay.put(msg)
+                    # Also persist user_response to snapshot
+                    if msg_type == "user_response":
+                        await store.update(session_id, lambda s: s.user_input.append(
+                            UserInput(
+                                question="user_initiated",
+                                response_type=msg.get("response_type", "TEXT"),
+                                value=msg.get("value", ""),
+                            )
+                        ))
 
-                elif msg_type == "video_frame":
-                    # TODO: forward to User Agent (Task 6)
-                    pass
-
-                elif msg_type == "user_response":
-                    await store.update(session_id, lambda s: s.user_input.append(
-                        UserInput(
-                            question="user_initiated",
-                            response_type=msg.get("response_type", "TEXT"),
-                            value=msg.get("value", ""),
-                        )
-                    ))
+                elif msg_type == "end_session":
+                    await store.update(session_id, lambda s: setattr(s, "phase", SessionPhase.FAILED))
+                    await registry.broadcast(session_id, {
+                        "type": "FAILED",
+                        "message": "Korisnik je prekinuo poziv",
+                    })
+                    break
 
         except WebSocketDisconnect:
             pass
@@ -232,6 +243,7 @@ def create_app(
             "busy": "DROPPED",
             "no-answer": "DROPPED",
         }
+        logger.info("Twilio status for session %s: %s", session_id, CallStatus)
         new_status = STATUS_MAP.get(CallStatus)
         if new_status is not None:
             cs = CS(new_status)
@@ -264,9 +276,7 @@ def create_app(
                 return
             while True:
                 try:
-                    pcm24 = await asyncio.wait_for(bridge.outbound.get(), timeout=0.1)
-                except asyncio.TimeoutError:
-                    continue
+                    pcm24 = await bridge.outbound.get()
                 except asyncio.CancelledError:
                     break
                 mulaw = pcm24k_to_ulaw8k(pcm24)

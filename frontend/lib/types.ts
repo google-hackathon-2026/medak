@@ -1,5 +1,3 @@
-export type DangerType = "FALL" | "SHAKE";
-
 // Session phases
 export type SessionPhase =
   | "INTAKE"
@@ -71,7 +69,8 @@ export type WSMessageToServer =
       type: "user_response";
       response_type: "TAP" | "TEXT";
       value: string;
-    };
+    }
+  | { type: "end_session" };
 
 // Transcript entry for display
 export interface TranscriptEntry {
