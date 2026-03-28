@@ -106,7 +106,7 @@ def create_app(
 
     if bridge_registry is None:
         bridge_registry = AudioBridgeRegistry()
-    app.state.bridge_registry = bridge_registry
+    app.state.bridge_registry = bridge_registry  # used by Twilio Media Streams WebSocket
 
     # --- Routes ---
 

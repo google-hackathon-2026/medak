@@ -58,3 +58,8 @@ async def test_twiml_not_found():
         resp = await c.post("/api/session/nonexistent/twilio/twiml")
     assert resp.status_code == 404
     await redis.aclose()
+
+
+async def test_twiml_stream_url_uses_wss_scheme(client_with_session):
+    resp = await client_with_session.post("/api/session/s1/twilio/twiml")
+    assert 'url="wss://' in resp.text
