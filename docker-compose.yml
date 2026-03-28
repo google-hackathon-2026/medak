@@ -13,6 +13,9 @@ services:
       - redis
     environment:
       - REDIS_URL=redis://redis:6379
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/adc.json
+    volumes:
+      - ${HOME}/.config/gcloud/application_default_credentials.json:/gcp/adc.json:ro
 
   demo-dispatch:
     build: ./backend
