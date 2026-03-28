@@ -126,7 +126,7 @@ class TestEmergencySnapshot:
         assert set(EmergencyType) == {"MEDICAL", "FIRE", "POLICE", "GAS", "OTHER"}
 
     def test_call_status_values(self):
-        assert set(CallStatus) == {"IDLE", "DIALING", "CONNECTED", "CONFIRMED", "DROPPED"}
+        assert set(CallStatus) == {"IDLE", "DIALING", "CONNECTED", "CONFIRMED", "DROPPED", "COMPLETED"}
 
     def test_roundtrip_json_serialization(self):
         snap = _make_snapshot(

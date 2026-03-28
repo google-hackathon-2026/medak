@@ -624,23 +624,25 @@ def test_websocket_invalid_session_closes_with_4004():
 # 10. Twilio audio endpoint
 # ---------------------------------------------------------------------------
 
-async def test_twilio_audio_returns_empty_chunks_for_existing_session(client: AsyncClient, store: SnapshotStore):
+async def test_twilio_twiml_returns_xml_for_existing_session(client: AsyncClient, store: SnapshotStore):
     sid = await create_session(client)
-    resp = await client.post(f"/api/session/{sid}/twilio/audio", json={"audio": "base64data"})
+    resp = await client.post(f"/api/session/{sid}/twilio/twiml")
     assert resp.status_code == 200
-    assert resp.json()["audio_chunks"] == []
+    assert "text/xml" in resp.headers.get("content-type", "")
+    assert "<Stream" in resp.text
+    assert sid in resp.text
 
 
-async def test_twilio_audio_returns_404_for_missing_session(client: AsyncClient):
-    resp = await client.post("/api/session/missing/twilio/audio", json={"audio": "base64data"})
+async def test_twilio_twiml_returns_404_for_missing_session(client: AsyncClient):
+    resp = await client.post("/api/session/missing/twilio/twiml")
     assert resp.status_code == 404
 
 
-async def test_twilio_audio_with_empty_audio_field(client: AsyncClient, store: SnapshotStore):
+async def test_twilio_status_endpoint_returns_ok(client: AsyncClient, store: SnapshotStore):
     sid = await create_session(client)
-    resp = await client.post(f"/api/session/{sid}/twilio/audio", json={"audio": ""})
+    resp = await client.post(f"/api/session/{sid}/twilio/status", data={"CallStatus": "in-progress"})
     assert resp.status_code == 200
-    assert "audio_chunks" in resp.json()
+    assert resp.json()["ok"] is True
 
 
 # ---------------------------------------------------------------------------
