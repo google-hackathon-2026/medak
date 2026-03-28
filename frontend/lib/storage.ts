@@ -6,7 +6,7 @@ const KEYS = {
   CALL_HISTORY: "medak_call_history",
 } as const;
 
-const DEFAULT_USER_INFO: UserInfo = {
+export const DEFAULT_USER_INFO: UserInfo = {
   name: "",
   address: "",
   phone: "",

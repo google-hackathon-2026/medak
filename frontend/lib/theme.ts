@@ -1,12 +1,16 @@
 import { MD3DarkTheme } from "react-native-paper";
 import type { MD3Theme } from "react-native-paper";
+import type { EmergencyType } from "./types";
 
 export type AppTheme = MD3Theme & {
-  custom: {
-    ambulance: string;
-    police: string;
-    fire: string;
+  custom: Record<EmergencyType, string> & {
     success: string;
+    warning: string;
+    info: string;
+    bubbleAI: string;
+    bubbleOperator: string;
+    bubbleUser: string;
+    questionHighlight: string;
   };
 };
 
@@ -55,10 +59,16 @@ const theme: AppTheme = {
     },
   },
   custom: {
-    ambulance: "#dc2626",
-    police: "#2563eb",
-    fire: "#ea580c",
+    AMBULANCE: "#dc2626",
+    POLICE: "#2563eb",
+    FIRE: "#ea580c",
     success: "#22c55e",
+    warning: "#eab308",
+    info: "#3b82f6",
+    bubbleAI: "#1e3a5f",
+    bubbleOperator: "#3f3f46",
+    bubbleUser: "#166534",
+    questionHighlight: "#fbbf24",
   },
 };
 

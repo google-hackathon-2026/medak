@@ -13,6 +13,8 @@ import { getCurrentLocation } from "../lib/location";
 import { getUserInfo } from "../lib/storage";
 import { initiateCall } from "../lib/api";
 import { useAppTheme } from "../lib/useAppTheme";
+import staticTheme from "../lib/theme";
+import type { UserInfo } from "../lib/types";
 
 const TAGS_BY_TYPE: Record<EmergencyType, QuickTag[]> = {
   AMBULANCE: [
@@ -28,29 +30,28 @@ const TAGS_BY_TYPE: Record<EmergencyType, QuickTag[]> = {
   FIRE: ["FIRE_SCENE", "MULTIPLE_VICTIMS", "CHILD"],
 };
 
-const TYPE_COLOR_KEY: Record<EmergencyType, "ambulance" | "police" | "fire"> = {
-  AMBULANCE: "ambulance",
-  POLICE: "police",
-  FIRE: "fire",
-};
-
 export default function EmergencyFormScreen() {
   const { type } = useLocalSearchParams<{ type: EmergencyType }>();
   const router = useRouter();
   const theme = useAppTheme();
   const emergencyType = (type as EmergencyType) || "AMBULANCE";
-  const typeColor = theme.custom[TYPE_COLOR_KEY[emergencyType]];
+  const typeColor = theme.custom[emergencyType];
 
   const [selectedTags, setSelectedTags] = useState<QuickTag[]>([]);
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState<LocationData | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(true);
   const [sending, setSending] = useState(false);
+  const [cachedUserInfo, setCachedUserInfo] = useState<UserInfo | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    getCurrentLocation()
-      .then((loc) => { if (!cancelled) setLocation(loc); })
+    Promise.all([getCurrentLocation(), getUserInfo()])
+      .then(([loc, info]) => {
+        if (cancelled) return;
+        setLocation(loc);
+        setCachedUserInfo(info);
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoadingLocation(false); });
     return () => { cancelled = true; };
@@ -73,7 +74,7 @@ export default function EmergencyFormScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 
     try {
-      const userInfo = await getUserInfo();
+      const userInfo = cachedUserInfo ?? await getUserInfo();
       const response = await initiateCall({
         emergencyType,
         description,
@@ -97,7 +98,7 @@ export default function EmergencyFormScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={{ flex: 1, backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.content}
     >
       <Text variant="titleLarge" style={styles.sectionTitle}>
@@ -110,10 +111,10 @@ export default function EmergencyFormScreen() {
             mode="flat"
             selected={selectedTags.includes(tag)}
             onPress={() => toggleTag(tag)}
-            selectedColor="#ffffff"
+            selectedColor={theme.colors.onPrimary}
             style={[
               styles.chip,
-              selectedTags.includes(tag) && { backgroundColor: typeColor },
+              { backgroundColor: selectedTags.includes(tag) ? typeColor : theme.colors.surfaceVariant },
             ]}
             textStyle={styles.chipText}
             accessibilityLabel={QUICK_TAG_LABELS[tag]}
@@ -134,7 +135,7 @@ export default function EmergencyFormScreen() {
         onChangeText={setDescription}
         multiline
         numberOfLines={4}
-        style={[styles.textInput, { minHeight: 120 }]}
+        style={[styles.textInput, { backgroundColor: theme.colors.surface }]}
         outlineColor={theme.colors.outline}
         activeOutlineColor={typeColor}
         textColor={theme.colors.onSurface}
@@ -144,7 +145,10 @@ export default function EmergencyFormScreen() {
       <Text variant="titleLarge" style={styles.sectionTitle}>
         Lokacija
       </Text>
-      <Surface style={styles.locationBox} elevation={1}>
+      <Surface
+        style={[styles.locationBox, { backgroundColor: theme.colors.surface }]}
+        elevation={1}
+      >
         {loadingLocation ? (
           <Text
             variant="bodyLarge"
@@ -183,10 +187,10 @@ export default function EmergencyFormScreen() {
         disabled={sending || !location}
         loading={sending}
         buttonColor={typeColor}
-        textColor="#ffffff"
-        contentStyle={{ height: 72 }}
-        labelStyle={{ fontSize: 24, fontWeight: "900" }}
-        style={{ borderRadius: 16, marginTop: 8 }}
+        textColor={theme.colors.onPrimary}
+        contentStyle={styles.callButtonContent}
+        labelStyle={styles.callButtonLabel}
+        style={styles.callButton}
         accessibilityLabel="Pozovi hitnu pomoć"
       >
         {sending ? "POZIVANJE..." : "POZOVI"}
@@ -196,16 +200,12 @@ export default function EmergencyFormScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#1a1a1a",
-  },
   content: {
     padding: 24,
     paddingBottom: 48,
   },
   sectionTitle: {
-    color: "#ffffff",
+    color: staticTheme.colors.onBackground,
     fontWeight: "700",
     marginBottom: 12,
     marginTop: 8,
@@ -219,7 +219,6 @@ const styles = StyleSheet.create({
   chip: {
     minHeight: 48,
     justifyContent: "center",
-    backgroundColor: "#333333",
   },
   chipText: {
     fontSize: 16,
@@ -227,17 +226,27 @@ const styles = StyleSheet.create({
   },
   textInput: {
     marginBottom: 24,
-    backgroundColor: "#262626",
+    minHeight: 120,
   },
   locationBox: {
     borderRadius: 12,
     padding: 16,
     marginBottom: 32,
-    backgroundColor: "#262626",
   },
   locationRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  callButton: {
+    borderRadius: 16,
+    marginTop: 8,
+  },
+  callButtonContent: {
+    height: 72,
+  },
+  callButtonLabel: {
+    fontSize: 24,
+    fontWeight: "900",
   },
 });

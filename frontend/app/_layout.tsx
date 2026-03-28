@@ -3,18 +3,18 @@ import { StatusBar } from "expo-status-bar";
 import { PaperProvider } from "react-native-paper";
 import theme from "../lib/theme";
 
+const screenOptions = {
+  headerStyle: { backgroundColor: theme.colors.background },
+  headerTintColor: theme.colors.onBackground,
+  headerTitleStyle: { fontWeight: "bold" as const, fontSize: 20 },
+  contentStyle: { backgroundColor: theme.colors.background },
+};
+
 export default function RootLayout() {
   return (
     <PaperProvider theme={theme}>
       <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: theme.colors.background },
-          headerTintColor: theme.colors.onBackground,
-          headerTitleStyle: { fontWeight: "bold", fontSize: 20 },
-          contentStyle: { backgroundColor: theme.colors.background },
-        }}
-      >
+      <Stack screenOptions={screenOptions}>
         <Stack.Screen
           name="index"
           options={{ title: "Medak", headerShown: false }}

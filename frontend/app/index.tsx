@@ -15,11 +15,10 @@ const EMERGENCY_OPTIONS: {
   type: EmergencyType;
   label: string;
   icon: string;
-  color: string;
 }[] = [
-  { type: "AMBULANCE", label: "Hitna pomoć", icon: "ambulance", color: "#dc2626" },
-  { type: "POLICE", label: "Policija", icon: "police-badge", color: "#2563eb" },
-  { type: "FIRE", label: "Vatrogasci", icon: "fire-truck", color: "#ea580c" },
+  { type: "AMBULANCE", label: "Hitna pomoć", icon: "ambulance" },
+  { type: "POLICE", label: "Policija", icon: "police-badge" },
+  { type: "FIRE", label: "Vatrogasci", icon: "fire-truck" },
 ];
 
 export default function HomeScreen() {
@@ -31,9 +30,14 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
       <View style={styles.header}>
-        <Text variant="displayMedium" style={styles.title}>
+        <Text
+          variant="displayMedium"
+          style={[styles.title, { color: theme.colors.onBackground }]}
+        >
           MEDAK
         </Text>
         <Text
@@ -48,7 +52,10 @@ export default function HomeScreen() {
         {EMERGENCY_OPTIONS.map((option) => (
           <Surface
             key={option.type}
-            style={[styles.button, { backgroundColor: option.color }]}
+            style={[
+              styles.button,
+              { backgroundColor: theme.custom[option.type] },
+            ]}
             elevation={2}
           >
             <TouchableRipple
@@ -59,8 +66,15 @@ export default function HomeScreen() {
               rippleColor="rgba(255, 255, 255, 0.2)"
             >
               <View style={styles.buttonRow}>
-                <Icon source={option.icon} size={36} color="#ffffff" />
-                <Text variant="headlineSmall" style={styles.buttonLabel}>
+                <Icon
+                  source={option.icon}
+                  size={36}
+                  color={theme.colors.onPrimary}
+                />
+                <Text
+                  variant="headlineSmall"
+                  style={{ fontWeight: "700", color: theme.colors.onPrimary }}
+                >
                   {option.label}
                 </Text>
               </View>
@@ -86,7 +100,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1a1a1a",
     padding: 24,
     justifyContent: "center",
   },
@@ -96,7 +109,6 @@ const styles = StyleSheet.create({
   },
   title: {
     fontWeight: "900",
-    color: "#ffffff",
     letterSpacing: 4,
   },
   grid: {
@@ -116,10 +128,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
-  },
-  buttonLabel: {
-    fontWeight: "700",
-    color: "#ffffff",
   },
   settingsButton: {
     alignSelf: "center",

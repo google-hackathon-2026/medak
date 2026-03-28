@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView } from "react-native";
 import { Text, TextInput, Chip, Button, Snackbar } from "react-native-paper";
 import * as Haptics from "expo-haptics";
 import { UserInfo } from "../lib/types";
-import { getUserInfo, saveUserInfo } from "../lib/storage";
+import { getUserInfo, saveUserInfo, DEFAULT_USER_INFO } from "../lib/storage";
 import { useAppTheme } from "../lib/useAppTheme";
 
 const DISABILITY_OPTIONS: { value: UserInfo["disability"]; label: string }[] = [
@@ -15,13 +15,7 @@ const DISABILITY_OPTIONS: { value: UserInfo["disability"]; label: string }[] = [
 
 export default function SettingsScreen() {
   const theme = useAppTheme();
-  const [info, setInfo] = useState<UserInfo>({
-    name: "",
-    address: "",
-    phone: "",
-    medicalNotes: "",
-    disability: "",
-  });
+  const [info, setInfo] = useState<UserInfo>({ ...DEFAULT_USER_INFO });
   const [saved, setSaved] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
 
@@ -39,18 +33,19 @@ export default function SettingsScreen() {
   }
 
   async function handleSave() {
-    await saveUserInfo(info);
-    setSaved(true);
-    setSnackbarVisible(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      await saveUserInfo(info);
+      setSaved(true);
+      setSnackbarVisible(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
   }
 
   return (
-    <View style={styles.wrapper}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-      >
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <Text
           variant="bodyLarge"
           style={{ color: theme.colors.onSurfaceVariant, marginBottom: 24 }}
@@ -64,7 +59,7 @@ export default function SettingsScreen() {
           value={info.name}
           onChangeText={(v) => updateField("name", v)}
           placeholder="Marko Marković"
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme.colors.surface }]}
           outlineColor={theme.colors.outline}
           activeOutlineColor={theme.colors.secondary}
           textColor={theme.colors.onSurface}
@@ -77,7 +72,7 @@ export default function SettingsScreen() {
           value={info.address}
           onChangeText={(v) => updateField("address", v)}
           placeholder="Bulevar Kralja Aleksandra 73, Beograd"
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme.colors.surface }]}
           outlineColor={theme.colors.outline}
           activeOutlineColor={theme.colors.secondary}
           textColor={theme.colors.onSurface}
@@ -91,7 +86,7 @@ export default function SettingsScreen() {
           onChangeText={(v) => updateField("phone", v)}
           placeholder="+381 64 123 4567"
           keyboardType="phone-pad"
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme.colors.surface }]}
           outlineColor={theme.colors.outline}
           activeOutlineColor={theme.colors.secondary}
           textColor={theme.colors.onSurface}
@@ -118,12 +113,15 @@ export default function SettingsScreen() {
                 updateField("disability", option.value);
                 Haptics.selectionAsync();
               }}
-              selectedColor="#ffffff"
+              selectedColor={theme.colors.onPrimary}
               showSelectedCheck
               style={[
                 styles.chip,
-                info.disability === option.value && {
-                  backgroundColor: theme.colors.secondary,
+                {
+                  backgroundColor:
+                    info.disability === option.value
+                      ? theme.colors.secondary
+                      : theme.colors.surfaceVariant,
                 },
               ]}
               textStyle={styles.chipText}
@@ -143,7 +141,10 @@ export default function SettingsScreen() {
           placeholder="Alergije, hronične bolesti, lekovi..."
           multiline
           numberOfLines={4}
-          style={[styles.input, { minHeight: 120 }]}
+          style={[
+            styles.input,
+            { minHeight: 120, backgroundColor: theme.colors.surface },
+          ]}
           outlineColor={theme.colors.outline}
           activeOutlineColor={theme.colors.secondary}
           textColor={theme.colors.onSurface}
@@ -155,10 +156,10 @@ export default function SettingsScreen() {
           icon={saved ? "check" : "content-save"}
           onPress={handleSave}
           buttonColor={theme.custom.success}
-          textColor="#ffffff"
-          contentStyle={{ height: 56 }}
-          labelStyle={{ fontSize: 18, fontWeight: "700" }}
-          style={{ borderRadius: 12, marginTop: 32 }}
+          textColor={theme.colors.onPrimary}
+          contentStyle={styles.saveButtonContent}
+          labelStyle={styles.saveButtonLabel}
+          style={styles.saveButton}
           accessibilityLabel="Sačuvaj podešavanja"
         >
           {saved ? "Sačuvano" : "Sačuvaj"}
@@ -179,11 +180,7 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    flex: 1,
-    backgroundColor: "#1a1a1a",
-  },
-  container: {
+  scroll: {
     flex: 1,
   },
   content: {
@@ -192,7 +189,6 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 16,
-    backgroundColor: "#262626",
   },
   chipContainer: {
     flexDirection: "row",
@@ -203,10 +199,20 @@ const styles = StyleSheet.create({
   chip: {
     minHeight: 48,
     justifyContent: "center",
-    backgroundColor: "#333333",
   },
   chipText: {
     fontSize: 16,
     fontWeight: "600",
+  },
+  saveButton: {
+    borderRadius: 12,
+    marginTop: 32,
+  },
+  saveButtonContent: {
+    height: 56,
+  },
+  saveButtonLabel: {
+    fontSize: 18,
+    fontWeight: "700",
   },
 });

@@ -7,6 +7,7 @@ import { CallStatus, TranscriptEntry } from "../lib/types";
 import { sendUserInput } from "../lib/api";
 import { connectToCallStream } from "../lib/sse";
 import { useAppTheme } from "../lib/useAppTheme";
+import staticTheme from "../lib/theme";
 
 const STATUS_LABELS: Record<CallStatus, string> = {
   CALLING: "Pozivanje...",
@@ -15,20 +16,15 @@ const STATUS_LABELS: Record<CallStatus, string> = {
   ERROR: "Greška",
 };
 
-const STATUS_COLORS: Record<CallStatus, string> = {
-  CALLING: "#eab308",
-  CONNECTED: "#22c55e",
-  COMPLETED: "#3b82f6",
-  ERROR: "#ef4444",
-};
+type Speaker = TranscriptEntry["speaker"];
 
-const SPEAKER_ICONS: Record<string, string> = {
+const SPEAKER_ICONS: Record<Speaker, string> = {
   AI: "robot",
   OPERATOR: "headset",
   USER: "account",
 };
 
-const SPEAKER_LABELS: Record<string, string> = {
+const SPEAKER_LABELS: Record<Speaker, string> = {
   AI: "AI",
   OPERATOR: "Operator",
   USER: "Vi",
@@ -46,6 +42,13 @@ export default function CallScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const lastStatusRef = useRef<CallStatus | null>(null);
   const entryCounter = useRef(0);
+
+  const statusColors: Record<CallStatus, string> = {
+    CALLING: theme.custom.warning,
+    CONNECTED: theme.custom.success,
+    COMPLETED: theme.custom.info,
+    ERROR: theme.colors.error,
+  };
 
   useEffect(() => {
     if (!callId) return;
@@ -82,7 +85,10 @@ export default function CallScreen() {
   }, [callId]);
 
   useEffect(() => {
-    scrollRef.current?.scrollToEnd({ animated: true });
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    return () => clearTimeout(timer);
   }, [transcript]);
 
   async function handleSendInput() {
@@ -106,13 +112,10 @@ export default function CallScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <View style={styles.statusBar}>
         <View
-          style={[
-            styles.statusDot,
-            { backgroundColor: STATUS_COLORS[status] },
-          ]}
+          style={[styles.statusDot, { backgroundColor: statusColors[status] }]}
         />
         <Text variant="titleLarge" style={styles.statusLabel}>
           {STATUS_LABELS[status]}
@@ -120,12 +123,7 @@ export default function CallScreen() {
       </View>
       <Text
         variant="bodyLarge"
-        style={{
-          color: theme.colors.onSurfaceVariant,
-          textAlign: "center",
-          paddingHorizontal: 24,
-          marginBottom: 16,
-        }}
+        style={[styles.statusMessage, { color: theme.colors.onSurfaceVariant }]}
       >
         {statusMessage}
       </Text>
@@ -138,7 +136,7 @@ export default function CallScreen() {
         {transcript.length === 0 && (
           <Text
             variant="bodyLarge"
-            style={{ color: "#525252", textAlign: "center", marginTop: 48 }}
+            style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}
           >
             Transkript razgovora će se pojaviti ovde...
           </Text>
@@ -149,24 +147,30 @@ export default function CallScreen() {
             style={[
               styles.message,
               entry.speaker === "OPERATOR"
-                ? styles.messageOperator
+                ? { backgroundColor: theme.custom.bubbleOperator, alignSelf: "flex-start" as const }
                 : entry.speaker === "USER"
-                  ? styles.messageUser
-                  : styles.messageAI,
+                  ? { backgroundColor: theme.custom.bubbleUser, alignSelf: "flex-end" as const }
+                  : { backgroundColor: theme.custom.bubbleAI, alignSelf: "flex-start" as const },
             ]}
             elevation={1}
           >
             <View style={styles.speakerRow}>
               <Icon
-                source={SPEAKER_ICONS[entry.speaker] || "account"}
+                source={SPEAKER_ICONS[entry.speaker]}
                 size={16}
                 color={theme.colors.onSurfaceVariant}
               />
-              <Text variant="labelMedium" style={styles.messageSpeaker}>
-                {SPEAKER_LABELS[entry.speaker] || entry.speaker}
+              <Text
+                variant="labelMedium"
+                style={{ fontWeight: "600", color: theme.colors.onSurfaceVariant }}
+              >
+                {SPEAKER_LABELS[entry.speaker]}
               </Text>
             </View>
-            <Text variant="bodyLarge" style={styles.messageText}>
+            <Text
+              variant="bodyLarge"
+              style={{ color: theme.colors.onSurface, lineHeight: 24 }}
+            >
               {entry.text}
             </Text>
           </Surface>
@@ -174,10 +178,19 @@ export default function CallScreen() {
       </ScrollView>
 
       {pendingQuestion && (
-        <Surface style={styles.inputSection} elevation={2}>
+        <Surface
+          style={[
+            styles.inputSection,
+            {
+              backgroundColor: theme.colors.surface,
+              borderTopColor: theme.colors.outline,
+            },
+          ]}
+          elevation={2}
+        >
           <Text
             variant="titleSmall"
-            style={{ color: "#fbbf24", marginBottom: 12 }}
+            style={[styles.questionText, { color: theme.custom.questionHighlight }]}
           >
             {pendingQuestion}
           </Text>
@@ -187,7 +200,7 @@ export default function CallScreen() {
               placeholder="Unesite odgovor..."
               value={userInput}
               onChangeText={setUserInput}
-              style={styles.input}
+              style={{ flex: 1, backgroundColor: theme.colors.surfaceVariant }}
               textColor={theme.colors.onSurface}
               accessibilityLabel="Vaš odgovor"
             />
@@ -195,7 +208,7 @@ export default function CallScreen() {
               icon="send"
               mode="contained"
               containerColor={theme.colors.primary}
-              iconColor="#ffffff"
+              iconColor={theme.colors.onPrimary}
               size={28}
               onPress={handleSendInput}
               disabled={sendingInput || !userInput.trim()}
@@ -210,10 +223,6 @@ export default function CallScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#1a1a1a",
-  },
   statusBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -228,7 +237,12 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     fontWeight: "700",
-    color: "#ffffff",
+    color: staticTheme.colors.onBackground,
+  },
+  statusMessage: {
+    textAlign: "center",
+    paddingHorizontal: 24,
+    marginBottom: 16,
   },
   transcript: {
     flex: 1,
@@ -237,22 +251,14 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  emptyText: {
+    textAlign: "center",
+    marginTop: 48,
+  },
   message: {
     padding: 14,
     borderRadius: 12,
     maxWidth: "85%",
-  },
-  messageAI: {
-    backgroundColor: "#1e3a5f",
-    alignSelf: "flex-start",
-  },
-  messageOperator: {
-    backgroundColor: "#3f3f46",
-    alignSelf: "flex-start",
-  },
-  messageUser: {
-    backgroundColor: "#166534",
-    alignSelf: "flex-end",
   },
   speakerRow: {
     flexDirection: "row",
@@ -260,29 +266,17 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 4,
   },
-  messageSpeaker: {
-    color: "#a3a3a3",
-    fontWeight: "600",
-  },
-  messageText: {
-    color: "#ffffff",
-    lineHeight: 24,
-  },
   inputSection: {
-    backgroundColor: "#262626",
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: "#404040",
+  },
+  questionText: {
+    marginBottom: 12,
   },
   inputRow: {
     flexDirection: "row",
     gap: 10,
     alignItems: "center",
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#333333",
-    minHeight: 48,
   },
   sendButton: {
     width: 56,
