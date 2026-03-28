@@ -120,7 +120,14 @@ def create_app(
         snapshot.confidence_score = 0.20  # GPS gives base confidence
         await store.save(snapshot)
 
-        # TODO: launch orchestrator as background task (Task 5)
+        from orchestrator import SessionOrchestrator
+        import asyncio
+        orch = SessionOrchestrator(
+            session_id=session_id,
+            store=store,
+            broadcast=registry.broadcast,
+        )
+        asyncio.create_task(orch.run())
 
         return SOSResponse(session_id=session_id, status="TRIAGE")
 
