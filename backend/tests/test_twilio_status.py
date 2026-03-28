@@ -48,12 +48,12 @@ async def test_status_in_progress_sets_connected(client_and_store):
     assert snap.call_status == CallStatus.CONNECTED
 
 
-async def test_status_completed_sets_dropped(client_and_store):
+async def test_status_completed_sets_completed(client_and_store):
     client, store = client_and_store
     resp = await _post_status(client, "s1", "completed")
     assert resp.status_code == 200
     snap = await store.load("s1")
-    assert snap.call_status == CallStatus.DROPPED
+    assert snap.call_status == CallStatus.COMPLETED
 
 
 async def test_status_failed_sets_dropped(client_and_store):

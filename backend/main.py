@@ -226,7 +226,7 @@ def create_app(
         # a meaningful internal state change; treated as no-ops.
         STATUS_MAP = {
             "in-progress": "CONNECTED",
-            "completed": "DROPPED",
+            "completed": "COMPLETED",
             "failed": "DROPPED",
             "busy": "DROPPED",
             "no-answer": "DROPPED",

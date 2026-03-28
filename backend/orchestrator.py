@@ -134,6 +134,11 @@ class SessionOrchestrator:
                         "Call failed after all retry attempts"
                     )
                     return
+                # Reset status BEFORE reconnecting to prevent duplicate detection
+                await self.store.update(
+                    self.session_id,
+                    lambda s: setattr(s, "call_status", CallStatus.DIALING),
+                )
                 delay = 2 ** reconnect_count
                 logger.warning(
                     "Session %s: call dropped, retry %d in %ds",
@@ -160,6 +165,19 @@ class SessionOrchestrator:
                 "message": "Pomoć je na putu!",
             })
             logger.info("Session %s: LIVE_CALL -> RESOLVED", self.session_id)
+            return "RESOLVED"
+
+        if snap.call_status == CallStatus.COMPLETED:
+            await self.store.update(
+                self.session_id,
+                lambda s: setattr(s, "phase", SessionPhase.RESOLVED),
+            )
+            await self.broadcast(self.session_id, {
+                "type": "RESOLVED",
+                "eta_minutes": snap.eta_minutes or 0,
+                "message": "Poziv završen.",
+            })
+            logger.info("Session %s: LIVE_CALL -> RESOLVED (call completed)", self.session_id)
             return "RESOLVED"
 
         if snap.call_status == CallStatus.DROPPED:
@@ -192,6 +210,15 @@ class SessionOrchestrator:
 
     async def _start_dispatch_agent(self) -> None:
         from dispatch_agent import run_dispatch_agent
+
+        # Cancel any still-running previous dispatch agent
+        if self._dispatch_agent_task is not None and not self._dispatch_agent_task.done():
+            self._dispatch_agent_task.cancel()
+            try:
+                await self._dispatch_agent_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Session %s: cancelled previous dispatch agent", self.session_id)
 
         bridge = None
         if self.bridge_registry is not None:

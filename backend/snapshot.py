@@ -31,6 +31,7 @@ class CallStatus(StrEnum):
     CONNECTED = "CONNECTED"
     CONFIRMED = "CONFIRMED"
     DROPPED = "DROPPED"
+    COMPLETED = "COMPLETED"
 
 
 # --- Models ---
