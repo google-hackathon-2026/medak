@@ -6,7 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    google_api_key: str = ""
+    google_cloud_project: str = "proud-quasar-310818"
+    google_cloud_location: str = "us-central1"
     redis_url: str = "redis://localhost:6379"
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""

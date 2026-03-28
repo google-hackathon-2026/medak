@@ -163,7 +163,7 @@ async def run_dispatch_agent(
 ) -> None:
     settings = get_settings()
     tools = DispatchAgentTools(session_id, store, broadcast)
-    client = genai.Client(api_key=settings.google_api_key)
+    client = genai.Client(vertexai=True, project=settings.google_cloud_project, location=settings.google_cloud_location)
 
     tool_handlers = {
         "get_emergency_brief": lambda _: tools.get_emergency_brief(),
