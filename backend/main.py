@@ -44,10 +44,6 @@ class SessionStatusResponse(BaseModel):
     snapshot_version: int
 
 
-class TwilioAudioRequest(BaseModel):
-    audio: str
-
-
 # --- Session registry for WebSocket broadcast ---
 
 class SessionRegistry:
@@ -158,20 +154,6 @@ def create_app(
             snapshot_version=snapshot.snapshot_version,
         )
 
-    @app.post("/api/session/{session_id}/twilio/audio")
-    async def twilio_audio(session_id: str, req: TwilioAudioRequest) -> dict:
-        snapshot = await store.load(session_id)
-        if snapshot is None:
-            return JSONResponse(
-                status_code=404,
-                content={"error": "Session not found"},
-            )
-        # In a full implementation, this would:
-        # 1. Feed req.audio into the Dispatch Agent's Gemini session
-        # 2. Return any queued audio from the Dispatch Agent
-        # For now, return empty chunks (agent integration happens via dispatch_agent.py)
-        return {"audio_chunks": []}
-
     @app.websocket("/api/session/{session_id}/ws")
     async def session_websocket(ws: WebSocket, session_id: str) -> None:
         await ws.accept()
@@ -254,6 +236,79 @@ def create_app(
                 # Session doesn't exist; no-op
                 pass
         return {"ok": True}
+
+    @app.websocket("/api/session/{session_id}/twilio/stream")
+    async def twilio_stream(ws: WebSocket, session_id: str) -> None:
+        from audio_bridge import ulaw8k_to_pcm16k, pcm24k_to_ulaw8k
+        import base64
+        import asyncio
+
+        bridge = app.state.bridge_registry.get(session_id)
+        if bridge is None:
+            await ws.accept()
+            await ws.close(code=4004, reason="No bridge for session")
+            return
+
+        await ws.accept()
+
+        async def send_outbound() -> None:
+            """Drain bridge.outbound and forward encoded audio to Twilio."""
+            # Wait until the 'start' event has been received and stream_sid is set
+            try:
+                await asyncio.wait_for(bridge._connected.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                return
+            except asyncio.CancelledError:
+                return
+            while True:
+                try:
+                    pcm24 = await asyncio.wait_for(bridge.outbound.get(), timeout=0.1)
+                except asyncio.TimeoutError:
+                    continue
+                except asyncio.CancelledError:
+                    break
+                mulaw = pcm24k_to_ulaw8k(pcm24)
+                if mulaw and bridge.stream_sid:
+                    payload = base64.b64encode(mulaw).decode()
+                    try:
+                        await ws.send_json({
+                            "event": "media",
+                            "streamSid": bridge.stream_sid,
+                            "media": {"payload": payload},
+                        })
+                    except Exception:
+                        break
+
+        sender_task = asyncio.create_task(send_outbound())
+
+        try:
+            async for raw in ws.iter_text():
+                msg = json.loads(raw)
+                event = msg.get("event")
+
+                if event == "start":
+                    stream_sid = msg.get("streamSid") or msg.get("start", {}).get("streamSid", "")
+                    bridge.on_twilio_connected(stream_sid)
+
+                elif event == "media":
+                    media = msg.get("media", {})
+                    if media.get("track") == "inbound":
+                        raw_mulaw = base64.b64decode(media["payload"])
+                        pcm16 = ulaw8k_to_pcm16k(raw_mulaw)
+                        if pcm16:
+                            await bridge.inbound.put(pcm16)
+
+                elif event == "stop":
+                    break
+
+        except WebSocketDisconnect:
+            pass
+        finally:
+            sender_task.cancel()
+            try:
+                await sender_task
+            except asyncio.CancelledError:
+                pass
 
     return app
 
