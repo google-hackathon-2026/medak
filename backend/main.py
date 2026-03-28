@@ -43,6 +43,10 @@ class SessionStatusResponse(BaseModel):
     snapshot_version: int
 
 
+class TwilioAudioRequest(BaseModel):
+    audio: str
+
+
 # --- Session registry for WebSocket broadcast ---
 
 class SessionRegistry:
@@ -147,6 +151,20 @@ def create_app(
             eta_minutes=snapshot.eta_minutes,
             snapshot_version=snapshot.snapshot_version,
         )
+
+    @app.post("/api/session/{session_id}/twilio/audio")
+    async def twilio_audio(session_id: str, req: TwilioAudioRequest) -> dict:
+        snapshot = await store.load(session_id)
+        if snapshot is None:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Session not found"},
+            )
+        # In a full implementation, this would:
+        # 1. Feed req.audio into the Dispatch Agent's Gemini session
+        # 2. Return any queued audio from the Dispatch Agent
+        # For now, return empty chunks (agent integration happens via dispatch_agent.py)
+        return {"audio_chunks": []}
 
     @app.websocket("/api/session/{session_id}/ws")
     async def session_websocket(ws: WebSocket, session_id: str) -> None:
