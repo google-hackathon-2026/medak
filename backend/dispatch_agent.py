@@ -182,8 +182,8 @@ async def run_dispatch_agent(
             call = twilio_client.calls.create(
                 to=settings.emergency_number,
                 from_=settings.twilio_from_number,
-                url=f"https://your-backend-url/api/session/{session_id}/twilio/twiml",
-                status_callback=f"https://your-backend-url/api/session/{session_id}/twilio/status",
+                url=f"{settings.backend_base_url}/api/session/{session_id}/twilio/twiml",
+                status_callback=f"{settings.backend_base_url}/api/session/{session_id}/twilio/status",
             )
             call_sid = call.sid
             await tools.update_call_status("DIALING")

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     triage_timeout_seconds: int = 10
     confidence_threshold: float = 0.85
     reconnect_max_attempts: int = 3
+    backend_base_url: str = "http://localhost:8080"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
