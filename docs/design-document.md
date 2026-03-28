@@ -1,3 +1,5 @@
+> **Note:** This document uses the working title "Voice Bridge." The project's final name is **Medak**.
+
 **VOICE BRIDGE**
 
 Comprehensive Design Document
