@@ -6,9 +6,10 @@ import uuid
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
+from audio_bridge import AudioBridgeRegistry
 from config import get_settings
 from snapshot import (
     EmergencySnapshot,
@@ -82,6 +83,7 @@ class SessionRegistry:
 
 def create_app(
     store: SnapshotStore | None = None,
+    bridge_registry: AudioBridgeRegistry | None = None,
 ) -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="Voice Bridge Backend", version="0.1.0")
@@ -101,6 +103,10 @@ def create_app(
         redis_client = aioredis.from_url(settings.redis_url)
         store = SnapshotStore(redis_client)
     app.state.store = store
+
+    if bridge_registry is None:
+        bridge_registry = AudioBridgeRegistry()
+    app.state.bridge_registry = bridge_registry
 
     # --- Routes ---
 
@@ -206,6 +212,23 @@ def create_app(
             pass
         finally:
             await registry.remove(session_id, ws)
+
+    @app.post("/api/session/{session_id}/twilio/twiml")
+    async def twilio_twiml(session_id: str) -> Response:
+        snapshot = await store.load(session_id)
+        if snapshot is None:
+            return JSONResponse(status_code=404, content={"error": "Session not found"})
+        base = settings.backend_base_url.removeprefix("https://").removeprefix("http://")
+        stream_url = f"wss://{base}/api/session/{session_id}/twilio/stream"
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            "<Response>"
+            "<Connect>"
+            f'<Stream url="{stream_url}"/>'
+            "</Connect>"
+            "</Response>"
+        )
+        return Response(content=twiml, media_type="text/xml")
 
     return app
 
