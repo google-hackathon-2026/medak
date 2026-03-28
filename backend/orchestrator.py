@@ -215,6 +215,14 @@ class SessionOrchestrator:
         })
         logger.error("Session %s: -> FAILED: %s", self.session_id, reason)
 
+    def _launch_agent(self, name: str, coro) -> asyncio.Task:
+        async def _run() -> None:
+            try:
+                await coro
+            except Exception:
+                logger.exception("%s crashed for session %s", name, self.session_id)
+        return asyncio.create_task(_run())
+
     async def _start_user_agent(self) -> None:
         settings = get_settings()
         if settings.demo_mode:
@@ -260,11 +268,8 @@ class SessionOrchestrator:
             if self.bridge_registry is not None:
                 bridge = self.bridge_registry.create(self.session_id)
 
-            async def _run() -> None:
-                try:
-                    await run_dispatch_agent(self.session_id, self.store, self.broadcast, bridge=bridge)
-                except Exception:
-                    logger.exception("Dispatch Agent crashed for session %s", self.session_id)
-
-            self._dispatch_agent_task = asyncio.create_task(_run())
+            self._dispatch_agent_task = self._launch_agent(
+                "Dispatch Agent",
+                run_dispatch_agent(self.session_id, self.store, self.broadcast, bridge=bridge),
+            )
             await asyncio.sleep(0)  # yield to let the task start
