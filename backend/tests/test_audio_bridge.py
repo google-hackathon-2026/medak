@@ -73,3 +73,104 @@ def test_round_trip_duration_coherence():
     pcm24 = bytes(480)
     mulaw_out = pcm24k_to_ulaw8k(pcm24)
     assert len(mulaw_out) == 80  # 10ms × 8kHz × 1 byte/sample
+
+
+# ── AudioBridge ───────────────────────────────────────────────────────────────
+
+import asyncio
+from audio_bridge import AudioBridge, AudioBridgeRegistry
+
+
+async def test_bridge_inbound_queue():
+    bridge = AudioBridge()
+    await bridge.inbound.put(b"chunk1")
+    data = await bridge.inbound.get()
+    assert data == b"chunk1"
+
+
+async def test_bridge_outbound_queue():
+    bridge = AudioBridge()
+    await bridge.outbound.put(b"chunk2")
+    data = await bridge.outbound.get()
+    assert data == b"chunk2"
+
+
+async def test_on_twilio_connected_sets_stream_sid():
+    bridge = AudioBridge()
+    assert bridge.stream_sid is None
+    bridge.on_twilio_connected("SM123abc")
+    assert bridge.stream_sid == "SM123abc"
+
+
+async def test_on_twilio_connected_fires_event():
+    bridge = AudioBridge()
+    assert not bridge._connected.is_set()
+    bridge.on_twilio_connected("SM123abc")
+    assert bridge._connected.is_set()
+
+
+async def test_wait_connected_resolves_when_connected():
+    bridge = AudioBridge()
+
+    async def connect_soon():
+        await asyncio.sleep(0.02)
+        bridge.on_twilio_connected("SM456")
+
+    asyncio.create_task(connect_soon())
+    result = await bridge.wait_connected(timeout=1.0)
+    assert result is True
+    assert bridge.stream_sid == "SM456"
+
+
+async def test_wait_connected_returns_false_on_timeout():
+    bridge = AudioBridge()
+    result = await bridge.wait_connected(timeout=0.05)
+    assert result is False
+
+
+async def test_wait_connected_returns_true_if_already_connected():
+    bridge = AudioBridge()
+    bridge.on_twilio_connected("SM789")
+    result = await bridge.wait_connected(timeout=0.1)
+    assert result is True
+
+
+# ── AudioBridgeRegistry ───────────────────────────────────────────────────────
+
+def test_registry_create_returns_bridge():
+    reg = AudioBridgeRegistry()
+    bridge = reg.create("session-1")
+    assert isinstance(bridge, AudioBridge)
+
+
+def test_registry_get_returns_same_instance():
+    reg = AudioBridgeRegistry()
+    created = reg.create("session-1")
+    got = reg.get("session-1")
+    assert got is created
+
+
+def test_registry_get_missing_returns_none():
+    reg = AudioBridgeRegistry()
+    assert reg.get("nonexistent") is None
+
+
+def test_registry_remove_deletes_entry():
+    reg = AudioBridgeRegistry()
+    reg.create("session-1")
+    reg.remove("session-1")
+    assert reg.get("session-1") is None
+
+
+def test_registry_remove_missing_is_noop():
+    reg = AudioBridgeRegistry()
+    reg.remove("nonexistent")  # must not raise
+
+
+def test_registry_independent_sessions():
+    reg = AudioBridgeRegistry()
+    b1 = reg.create("s1")
+    b2 = reg.create("s2")
+    assert b1 is not b2
+    assert reg.get("s1") is b1
+    assert reg.get("s2") is b2

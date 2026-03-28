@@ -44,3 +44,52 @@ def pcm24k_to_ulaw8k(data: bytes) -> bytes:
     except Exception:
         logger.exception("pcm24k_to_ulaw8k conversion error — skipping chunk")
         return b""
+
+
+# ── AudioBridge ───────────────────────────────────────────────────────────────
+
+class AudioBridge:
+    """Per-session audio pipeline connecting Twilio WebSocket ↔ Gemini Live.
+
+    inbound:  PCM 16kHz bytes  — Twilio → Gemini
+    outbound: PCM 24kHz bytes  — Gemini → Twilio
+    """
+
+    def __init__(self) -> None:
+        self.inbound: asyncio.Queue[bytes] = asyncio.Queue()
+        self.outbound: asyncio.Queue[bytes] = asyncio.Queue()
+        self.stream_sid: str | None = None
+        self._connected: asyncio.Event = asyncio.Event()
+
+    def on_twilio_connected(self, stream_sid: str) -> None:
+        """Called when the Twilio Media Streams WebSocket sends a 'start' event."""
+        self.stream_sid = stream_sid
+        self._connected.set()
+
+    async def wait_connected(self, timeout: float = 30.0) -> bool:
+        """Wait until on_twilio_connected is called. Returns False on timeout."""
+        try:
+            await asyncio.wait_for(self._connected.wait(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+
+# ── AudioBridgeRegistry ───────────────────────────────────────────────────────
+
+class AudioBridgeRegistry:
+    """Singleton stored in app.state.bridge_registry. Maps session_id → AudioBridge."""
+
+    def __init__(self) -> None:
+        self._bridges: dict[str, AudioBridge] = {}
+
+    def create(self, session_id: str) -> AudioBridge:
+        bridge = AudioBridge()
+        self._bridges[session_id] = bridge
+        return bridge
+
+    def get(self, session_id: str) -> AudioBridge | None:
+        return self._bridges.get(session_id)
+
+    def remove(self, session_id: str) -> None:
+        self._bridges.pop(session_id, None)
