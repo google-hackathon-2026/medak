@@ -261,7 +261,7 @@ async def run_user_agent(
     }
 
     config = genai_types.LiveConnectConfig(
-        response_modalities=["AUDIO"],
+        response_modalities=["TEXT"],
         system_instruction=genai_types.Content(
             parts=[genai_types.Part(text=USER_AGENT_SYSTEM_PROMPT)]
         ),
@@ -270,7 +270,7 @@ async def run_user_agent(
 
     try:
         async with client.aio.live.connect(
-            model="gemini-live-2.5-flash-native-audio",
+            model="gemini-2.0-flash-live-001",
             config=config,
         ) as session:
             logger.info("User Agent connected for session %s", session_id)
@@ -308,7 +308,7 @@ async def run_user_agent(
                                     media_chunks=[
                                         genai_types.Blob(
                                             data=audio_bytes,
-                                            mime_type="audio/pcm;rate=16000",
+                                            mime_type="audio/wav",
                                         )
                                     ]
                                 )
