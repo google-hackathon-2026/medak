@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     @field_validator("emergency_number")
     @classmethod
     def reject_real_emergency_numbers(cls, v: str) -> str:
-        if v.strip() in ("112", "194"):
+        normalized = v.strip().lstrip("+0")
+        if normalized in ("112", "194"):
             raise ValueError(
                 "Cannot use real emergency numbers (112/194). "
                 "Use a team member's phone for demo."
