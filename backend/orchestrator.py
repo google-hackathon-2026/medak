@@ -123,7 +123,7 @@ class SessionOrchestrator:
                 return
             if result == "DROPPED":
                 reconnect_count += 1
-                if reconnect_count > self.max_reconnects:
+                if reconnect_count >= self.max_reconnects:
                     await self._transition_to_failed(
                         "Call failed after all retry attempts"
                     )
