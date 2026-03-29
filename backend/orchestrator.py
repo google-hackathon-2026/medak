@@ -236,11 +236,12 @@ class SessionOrchestrator:
         settings = get_settings()
         if settings.demo_mode:
             from demo_user_agent import run_demo_user_agent
-            self._user_agent_task = asyncio.create_task(
+            self._user_agent_task = self._launch_agent(
+                "Demo User Agent",
                 run_demo_user_agent(
                     self.session_id, self.store, self.broadcast,
                     scenario=settings.demo_scenario,
-                )
+                ),
             )
         else:
             from user_agent import run_user_agent
@@ -267,8 +268,9 @@ class SessionOrchestrator:
         settings = get_settings()
         if settings.demo_mode:
             from demo_dispatch_agent import run_demo_dispatch_agent
-            self._dispatch_agent_task = asyncio.create_task(
-                run_demo_dispatch_agent(self.session_id, self.store, self.broadcast)
+            self._dispatch_agent_task = self._launch_agent(
+                "Demo Dispatch Agent",
+                run_demo_dispatch_agent(self.session_id, self.store, self.broadcast),
             )
         else:
             from dispatch_agent import run_dispatch_agent
