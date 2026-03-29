@@ -65,6 +65,15 @@ class SessionOrchestrator:
             logger.exception("Orchestrator error for session %s", self.session_id)
             await self._transition_to_failed("Internal error")
         finally:
+            # FIX: Cancel any running agent tasks to prevent ghost coroutines
+            for task in (self._user_agent_task, self._dispatch_agent_task):
+                if task is not None and not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+            # Clean up registries
             if self.bridge_registry is not None:
                 self.bridge_registry.remove(self.session_id)
             if self.user_media_registry is not None:

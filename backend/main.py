@@ -19,10 +19,12 @@ from config import get_settings
 from user_agent import UserMediaRegistry
 from snapshot import (
     EmergencySnapshot,
+    EmergencyType,
     Location,
     SessionPhase,
     SnapshotStore,
     UserInput,
+    compute_confidence,
 )
 
 
@@ -34,6 +36,7 @@ class SOSRequest(BaseModel):
     address: str | None = None
     user_id: str
     device_id: str
+    emergency_type: str | None = None
 
 
 class SOSResponse(BaseModel):
@@ -131,7 +134,17 @@ def create_app(
                 address=req.address,
             ),
         )
-        snapshot.confidence_score = 0.20  # GPS gives base confidence
+
+        # FIX: Map frontend emergency_type to EmergencyType enum
+        TYPE_MAP = {"AMBULANCE": "MEDICAL", "FIRE": "FIRE", "POLICE": "POLICE"}
+        if req.emergency_type:
+            mapped = TYPE_MAP.get(req.emergency_type.upper(), req.emergency_type.upper())
+            try:
+                snapshot.emergency_type = EmergencyType(mapped)
+            except ValueError:
+                pass  # unknown type, leave as None
+
+        snapshot.confidence_score = compute_confidence(snapshot)
         await store.save(snapshot)
 
         from orchestrator import SessionOrchestrator
@@ -143,7 +156,16 @@ def create_app(
             bridge_registry=app.state.bridge_registry,
             user_media_registry=app.state.user_media_registry,
         )
-        asyncio.create_task(orch.run())
+        task = asyncio.create_task(orch.run())
+
+        # FIX: Add done callback so fire-and-forget errors are logged
+        def _orch_done(t: asyncio.Task, sid=session_id):
+            if t.cancelled():
+                logger.warning("Orchestrator cancelled for %s", sid)
+            elif t.exception():
+                logger.error("Orchestrator failed for %s: %s", sid, t.exception())
+
+        task.add_done_callback(_orch_done)
 
         return SOSResponse(session_id=session_id, status="TRIAGE")
 
