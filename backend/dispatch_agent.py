@@ -150,6 +150,7 @@ async def run_dispatch_agent(
     store: SnapshotStore,
     broadcast: BroadcastFn,
     bridge: "AudioBridge | None" = None,
+    tracer: "DebugTracer | None" = None,
 ) -> None:
     settings = get_settings()
     tools = DispatchAgentTools(session_id, store, broadcast)
@@ -163,6 +164,8 @@ async def run_dispatch_agent(
 
     # Pre-load the emergency brief for the system prompt
     brief = await tools.get_emergency_brief()
+    if tracer:
+        await tracer.save_dispatch_brief(brief)
 
     # Initiate Twilio call
     twilio_client = None
@@ -227,6 +230,9 @@ async def run_dispatch_agent(
                     parts=[genai_types.Part(text="The call is connected. Begin the briefing.")],
                 )
             )
+            if tracer:
+                await tracer.save_gemini_input("da", {"type": "system_prompt", "text": system_prompt})
+                await tracer.save_gemini_input("da", {"type": "initial_prompt", "text": "The call is connected. Begin the briefing."})
 
             async def _sender() -> None:
                 """Forward inbound PCM 16kHz from Twilio to Gemini Live."""
@@ -244,6 +250,8 @@ async def run_dispatch_agent(
                                 mime_type="audio/pcm;rate=16000",
                             )
                         )
+                        if tracer:
+                            await tracer.save_gemini_input("da", {"type": "twilio_audio", "size_bytes": len(chunk)})
                     except Exception:
                         logger.exception("Sender task error for session %s", session_id)
                         break
@@ -275,15 +283,24 @@ async def run_dispatch_agent(
                                     and part.inline_data.mime_type.startswith("audio/")
                                 ):
                                     await bridge.outbound.put(part.inline_data.data)
+                                    if tracer:
+                                        await tracer.save_gemini_output("da", {"type": "audio_to_twilio", "size_bytes": len(part.inline_data.data)})
 
                     # Tool calls — wrapped in try/except so flaky native audio
                     # tool support doesn't crash the entire session
                     if response.tool_call:
+                        if tracer:
+                            await tracer.save_gemini_output("da", {
+                                "type": "tool_call",
+                                "calls": [{"name": fc.name, "args": fc.args} for fc in response.tool_call.function_calls],
+                            })
                         for fc in response.tool_call.function_calls:
                             handler = tool_handlers.get(fc.name)
                             if handler:
                                 try:
                                     result = await handler(fc.args or {})
+                                    if tracer:
+                                        await tracer.save_tool_call(fc.name, fc.args or {}, result)
                                     await session.send_tool_response(
                                         function_responses=[{
                                             "id": fc.id,
@@ -296,6 +313,8 @@ async def run_dispatch_agent(
                                         "Tool call %s failed for session %s, continuing",
                                         fc.name, session_id, exc_info=True,
                                     )
+                                    if tracer:
+                                        await tracer.save_tool_call(fc.name, fc.args or {}, "ERROR")
                                     await session.send_tool_response(
                                         function_responses=[{
                                             "id": fc.id,
@@ -306,6 +325,8 @@ async def run_dispatch_agent(
 
                     # Text transcript (from tool call text output)
                     if response.text:
+                        if tracer:
+                            await tracer.save_gemini_output("da", {"type": "text", "text": response.text})
                         await broadcast(session_id, {
                             "type": "transcript",
                             "speaker": "assistant",

@@ -136,6 +136,86 @@ EMERGENCY_NUMBER              # Team member's phone for demo, NEVER real 112/194
 TRIAGE_TIMEOUT_SECONDS=10
 CONFIDENCE_THRESHOLD=0.85
 RECONNECT_MAX_ATTEMPTS=3
+DEBUG_TRACE=false             # Set true to write debug artifacts to backend/debug_traces/
+```
+
+## Debug Trace Mode
+
+Set `DEBUG_TRACE=true` in `.env` to record every step of the emergency pipeline to disk. After a session completes, inspect `backend/debug_traces/{session_id}/`:
+
+```
+debug_traces/{session_id}/
+├── frames/frame_{ts}.jpg          # Every camera frame received from the phone
+├── audio/chunk_{ts}.pcm           # Every audio chunk from the phone mic
+├── snapshots/snapshot_v{N}.json   # Snapshot after every mutation (pretty JSON)
+├── gemini/
+│   ├── ua_input_{ts}.json         # What was sent to User Agent Gemini
+│   ├── ua_input_{ts}_image.jpg    # Image sent to Gemini (viewable)
+│   ├── ua_output_{ts}.json        # Gemini response (text or tool_call)
+│   ├── da_input_{ts}.json         # Dispatch Agent Gemini inputs
+│   └── da_output_{ts}.json        # Dispatch Agent Gemini outputs
+├── tools/tool_{ts}_{name}.json    # Each tool call with args + result
+├── ws/ws_log.jsonl                # All WebSocket messages (one JSON per line)
+├── dispatch/brief.txt             # Emergency brief delivered to dispatch
+├── phases/transitions.jsonl       # Phase transition log
+└── summary.json                   # Full timeline + event counts
+```
+
+### Running an E2E debug test
+
+1. Set `DEBUG_TRACE=true` in `.env`
+2. Start backend: `docker compose up --build` (or `cd backend && uv run uvicorn main:app --host 0.0.0.0 --port 8080`)
+3. Start ngrok + frontend as usual
+4. Trigger SOS from the phone app, point camera at test scenario (e.g. car crash image)
+5. Wait for session to complete (RESOLVED or FAILED)
+6. Inspect the trace directory:
+   ```bash
+   ls backend/debug_traces/          # Find session ID
+   # View received camera frames:
+   open backend/debug_traces/<id>/frames/
+   # Check what Gemini saw:
+   open backend/debug_traces/<id>/gemini/ua_input_*_image.jpg
+   # Read Gemini's tool calls and text output:
+   cat backend/debug_traces/<id>/gemini/ua_output_*.json
+   # Read the dispatch brief:
+   cat backend/debug_traces/<id>/dispatch/brief.txt
+   # Full timeline:
+   cat backend/debug_traces/<id>/summary.json
+   ```
+
+The `debug_traces/` directory is gitignored. Tracing has no effect when `DEBUG_TRACE` is unset or `false`.
+
+## Local Development
+
+### Prerequisites
+- Docker
+- Node.js 18+ and npm
+- [ngrok](https://ngrok.com/) with auth token configured
+- GCP Application Default Credentials at `~/.config/gcloud/application_default_credentials.json`
+- Expo Go app on your phone
+
+### Quick Start (3 terminals)
+
+```bash
+# Terminal 1 — Backend (Redis + FastAPI + Demo Dispatch)
+docker compose up --build
+
+# Terminal 2 — ngrok tunnel (so Twilio callbacks reach your local backend)
+ngrok http 8080 --domain=<your-ngrok-domain>
+
+# Terminal 3 — Frontend (Expo dev server)
+cd frontend && npm install
+EXPO_PUBLIC_API_URL=https://<your-ngrok-domain> npx expo start
+```
+
+- `BACKEND_BASE_URL` in `.env` must match the ngrok URL (used for Twilio webhook callbacks).
+- `EXPO_PUBLIC_API_URL` overrides the hardcoded LAN IP in `frontend/lib/config.ts` so the phone app reaches the backend through ngrok.
+- Scan the QR code with Expo Go. Phone and laptop must be on the same WiFi (or use `--tunnel` flag).
+
+### Verify
+```bash
+curl https://<your-ngrok-domain>/api/health
+# {"status":"ok","active_sessions":0}
 ```
 
 ## GCP / Deployment

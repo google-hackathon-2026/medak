@@ -30,6 +30,9 @@ service-account*.json
 # Docker
 docker-compose.override.yml
 
+# Debug traces
+backend/debug_traces/
+
 # Misc
 *.tmp
 *.bak
