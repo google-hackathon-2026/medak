@@ -152,6 +152,7 @@ async def run_dispatch_agent(
     bridge: "AudioBridge | None" = None,
     tracer: "DebugTracer | None" = None,
 ) -> None:
+    logger.info("run_dispatch_agent started for session %s (bridge=%s, tracer=%s)", session_id, bridge is not None, tracer is not None)
     settings = get_settings()
     tools = DispatchAgentTools(session_id, store, broadcast)
     client = create_genai_client()
@@ -164,6 +165,7 @@ async def run_dispatch_agent(
 
     # Pre-load the emergency brief for the system prompt
     brief = await tools.get_emergency_brief()
+    logger.info("Session %s: emergency brief: %s", session_id, brief)
     if tracer:
         await tracer.save_dispatch_brief(brief)
 
@@ -171,6 +173,8 @@ async def run_dispatch_agent(
     twilio_client = None
     call_sid = None
     if settings.twilio_account_sid and settings.emergency_number:
+        logger.info("Session %s: initiating Twilio call to %s from %s", session_id, settings.emergency_number, settings.twilio_from_number)
+        logger.info("Session %s: TwiML URL: %s/api/session/%s/twilio/twiml", session_id, settings.backend_base_url, session_id)
         try:
             twilio_client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
             twiml_url = f"{settings.backend_base_url}/api/session/{session_id}/twilio/twiml"
@@ -182,6 +186,7 @@ async def run_dispatch_agent(
                 from_=settings.twilio_from_number,
                 url=twiml_url,
                 status_callback=status_url,
+                record=True,
             )
             call_sid = call.sid
             await tools.update_call_status("DIALING")
@@ -259,6 +264,7 @@ async def run_dispatch_agent(
             sender_task = asyncio.create_task(_sender())
 
             try:
+                logger.info("Session %s: entering Dispatch Gemini receive loop", session_id)
                 async for response in session.receive():
                     # Handle interruption — flush outbound audio queue
                     if (
@@ -289,6 +295,7 @@ async def run_dispatch_agent(
                     # Tool calls — wrapped in try/except so flaky native audio
                     # tool support doesn't crash the entire session
                     if response.tool_call:
+                        logger.info("Session %s: Dispatch Gemini tool_call: %s", session_id, [fc.name for fc in response.tool_call.function_calls])
                         if tracer:
                             await tracer.save_gemini_output("da", {
                                 "type": "tool_call",
@@ -299,6 +306,7 @@ async def run_dispatch_agent(
                             if handler:
                                 try:
                                     result = await handler(fc.args or {})
+                                    logger.info("Session %s: dispatch tool %s -> %s", session_id, fc.name, str(result)[:100])
                                     if tracer:
                                         await tracer.save_tool_call(fc.name, fc.args or {}, result)
                                     await session.send_tool_response(
@@ -325,6 +333,7 @@ async def run_dispatch_agent(
 
                     # Text transcript (from tool call text output)
                     if response.text:
+                        logger.info("Session %s: Dispatch Gemini text: %s", session_id, response.text[:120])
                         if tracer:
                             await tracer.save_gemini_output("da", {"type": "text", "text": response.text})
                         await broadcast(session_id, {
