@@ -134,7 +134,11 @@ class SnapshotStore:
     ) -> EmergencySnapshot:
         """Update a snapshot with optimistic retry.
 
-        NOTE: Ideally this would use Redis WATCH/MULTI/EXEC for true
+        NOTE: This is NOT truly atomic. Concurrent updates from User Agent and
+        Dispatch Agent can still race. For hackathon demo this is acceptable
+        since demo mode runs sequentially. Production would need Redis WATCH/MULTI.
+
+        Ideally this would use Redis WATCH/MULTI/EXEC for true
         atomic CAS, but fakeredis compatibility is spotty. For the
         hackathon we use a simple read-modify-write with retry as a
         pragmatic compromise. The snapshot_version bump at least makes

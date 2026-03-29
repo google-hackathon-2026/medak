@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from pathlib import Path
 
@@ -115,6 +116,9 @@ def create_app(
 
     app.state.user_media_registry = UserMediaRegistry()
 
+    # Double-SOS dedup: device_id -> (session_id, timestamp)
+    recent_sos: dict[str, tuple[str, float]] = {}
+
     # --- Routes ---
 
     @app.get("/api/health")
@@ -123,7 +127,15 @@ def create_app(
 
     @app.post("/api/sos")
     async def trigger_sos(req: SOSRequest) -> SOSResponse:
+        # Double-SOS protection: return existing session if same device within 30s
+        now = time.time()
+        if req.device_id in recent_sos:
+            existing_sid, ts = recent_sos[req.device_id]
+            if now - ts < 30:
+                return SOSResponse(session_id=existing_sid, status="TRIAGE")
+
         session_id = str(uuid.uuid4())
+        recent_sos[req.device_id] = (session_id, now)
         snapshot = EmergencySnapshot(
             session_id=session_id,
             phase=SessionPhase.INTAKE,
@@ -158,12 +170,15 @@ def create_app(
         )
         task = asyncio.create_task(orch.run())
 
-        # FIX: Add done callback so fire-and-forget errors are logged
-        def _orch_done(t: asyncio.Task, sid=session_id):
+        # FIX: Add done callback so fire-and-forget errors are logged + user notified
+        def _orch_done(t: asyncio.Task, sid=session_id, reg=registry):
             if t.cancelled():
                 logger.warning("Orchestrator cancelled for %s", sid)
             elif t.exception():
                 logger.error("Orchestrator failed for %s: %s", sid, t.exception())
+                # Schedule broadcast on the event loop
+                loop = asyncio.get_event_loop()
+                loop.create_task(reg.broadcast(sid, {"type": "FAILED", "message": "Internal error. Please try again."}))
 
         task.add_done_callback(_orch_done)
 
@@ -199,7 +214,11 @@ def create_app(
         try:
             while True:
                 raw = await ws.receive_text()
-                msg = json.loads(raw)
+                try:
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    await ws.send_text(json.dumps({"type": "error", "message": "Invalid JSON"}))
+                    continue
                 msg_type = msg.get("type")
 
                 if msg_type == "ping":

@@ -81,66 +81,72 @@ async def run_demo_user_agent(
     scenario: str = "stroke_neighbor",
 ) -> None:
     """Run the scripted user agent for the given scenario."""
-    tools = UserAgentTools(session_id, store, broadcast)
-    script = SCENARIOS.get(scenario, STROKE_NEIGHBOR_SCRIPT)
+    try:
+        tools = UserAgentTools(session_id, store, broadcast)
+        script = SCENARIOS.get(scenario, STROKE_NEIGHBOR_SCRIPT)
 
-    tool_map = {
-        "confirm_location": lambda args: tools.confirm_location(args["address"]),
-        "set_emergency_type": lambda args: tools.set_emergency_type(args["emergency_type"]),
-        "set_clinical_fields": lambda args: tools.set_clinical_fields(**args),
-        "append_free_text": lambda args: tools.append_free_text(args["utterance"]),
-    }
+        tool_map = {
+            "confirm_location": lambda args: tools.confirm_location(args["address"]),
+            "set_emergency_type": lambda args: tools.set_emergency_type(args["emergency_type"]),
+            "set_clinical_fields": lambda args: tools.set_clinical_fields(**args),
+            "append_free_text": lambda args: tools.append_free_text(args["utterance"]),
+        }
 
-    start = asyncio.get_event_loop().time()
-    logger.info("Demo User Agent started for session %s (scenario: %s)", session_id, scenario)
+        start = asyncio.get_event_loop().time()
+        logger.info("Demo User Agent started for session %s (scenario: %s)", session_id, scenario)
 
-    # --- Execute scripted sequence ---
-    for delay, action_type, action_args, transcript_text in script:
-        elapsed = asyncio.get_event_loop().time() - start
-        wait = delay - elapsed
-        if wait > 0:
-            await asyncio.sleep(wait)
+        # --- Execute scripted sequence ---
+        for delay, action_type, action_args, transcript_text in script:
+            elapsed = asyncio.get_event_loop().time() - start
+            wait = delay - elapsed
+            if wait > 0:
+                await asyncio.sleep(wait)
 
-        # Execute tool call (real snapshot mutation)
-        if action_type == "tool_call":
-            tool_name, kwargs = action_args
-            handler = tool_map.get(tool_name)
-            if handler:
-                result = await handler(kwargs)
-                logger.info("Demo User Agent tool: %s -> %s", tool_name, result)
+            # Execute tool call (real snapshot mutation)
+            if action_type == "tool_call":
+                tool_name, kwargs = action_args
+                handler = tool_map.get(tool_name)
+                if handler:
+                    result = await handler(kwargs)
+                    logger.info("Demo User Agent tool: %s -> %s", tool_name, result)
 
-        # Broadcast transcript (real WebSocket message)
-        if transcript_text:
-            await broadcast(session_id, {
-                "type": "transcript",
-                "speaker": "assistant",
-                "text": transcript_text,
-            })
+            # Broadcast transcript (real WebSocket message)
+            if transcript_text:
+                await broadcast(session_id, {
+                    "type": "transcript",
+                    "speaker": "assistant",
+                    "text": transcript_text,
+                })
 
-    logger.info("Demo User Agent script complete for session %s, entering monitoring loop", session_id)
+        logger.info("Demo User Agent script complete for session %s, entering monitoring loop", session_id)
 
-    # --- Monitoring loop for dispatch questions (cross-agent Q&A relay) ---
-    while True:
-        snap = await store.load(session_id)
-        if snap is None or snap.phase.value in ("RESOLVED", "FAILED"):
-            logger.info("Demo User Agent exiting: session %s phase=%s",
-                        session_id, snap.phase if snap else "None")
-            break
+        # --- Monitoring loop for dispatch questions (cross-agent Q&A relay) ---
+        while True:
+            snap = await store.load(session_id)
+            if snap is None or snap.phase.value in ("RESOLVED", "FAILED"):
+                logger.info("Demo User Agent exiting: session %s phase=%s",
+                            session_id, snap.phase if snap else "None")
+                break
 
-        # Check for pending dispatch questions
-        pending = await tools.get_pending_dispatch_question()
-        if pending != "NONE":
-            # Brief "checking" delay for visual effect
-            await asyncio.sleep(1.5)
+            # Check for pending dispatch questions
+            pending = await tools.get_pending_dispatch_question()
+            if pending != "NONE":
+                # Brief "checking" delay for visual effect
+                await asyncio.sleep(1.5)
 
-            answer = ANSWER_MAP.get(pending, STRINGS["checking_with_caller"])
-            await tools.answer_dispatch_question(pending, answer)
+                answer = ANSWER_MAP.get(pending, STRINGS["checking_with_caller"])
+                await tools.answer_dispatch_question(pending, answer)
 
-            await broadcast(session_id, {
-                "type": "transcript",
-                "speaker": "assistant",
-                "text": f"{STRINGS['dispatcher_answer_prefix']}: {answer}",
-            })
-            logger.info("Demo User Agent answered question: %s -> %s", pending, answer)
+                await broadcast(session_id, {
+                    "type": "transcript",
+                    "speaker": "assistant",
+                    "text": f"{STRINGS['dispatcher_answer_prefix']}: {answer}",
+                })
+                logger.info("Demo User Agent answered question: %s -> %s", pending, answer)
 
-        await asyncio.sleep(2)
+            await asyncio.sleep(2)
+    except asyncio.CancelledError:
+        raise  # let cancellation propagate
+    except Exception:
+        logger.exception("Demo user agent crashed for session %s", session_id)
+        await broadcast(session_id, {"type": "transcript", "speaker": "system", "text": "Agent error — restarting..."})

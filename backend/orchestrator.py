@@ -42,9 +42,9 @@ class SessionOrchestrator:
         self.user_media_registry = user_media_registry
 
         settings = get_settings()
-        self.triage_timeout = triage_timeout or settings.triage_timeout_seconds
-        self.confidence_threshold = confidence_threshold or settings.confidence_threshold
-        self.max_reconnects = max_reconnects or settings.reconnect_max_attempts
+        self.triage_timeout = triage_timeout if triage_timeout is not None else settings.triage_timeout_seconds
+        self.confidence_threshold = confidence_threshold if confidence_threshold is not None else settings.confidence_threshold
+        self.max_reconnects = max_reconnects if max_reconnects is not None else settings.reconnect_max_attempts
 
         self._user_agent_task: asyncio.Task | None = None
         self._dispatch_agent_task: asyncio.Task | None = None
