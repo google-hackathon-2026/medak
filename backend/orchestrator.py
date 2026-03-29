@@ -33,6 +33,7 @@ class SessionOrchestrator:
         max_reconnects: int | None = None,
         bridge_registry: AudioBridgeRegistry | None = None,
         user_media_registry: UserMediaRegistry | None = None,
+        tracer: "DebugTracer | None" = None,
     ) -> None:
         self.session_id = session_id
         self.store = store
@@ -40,6 +41,7 @@ class SessionOrchestrator:
         self.start_agents = start_agents
         self.bridge_registry = bridge_registry
         self.user_media_registry = user_media_registry
+        self.tracer = tracer
 
         settings = get_settings()
         self.triage_timeout = triage_timeout if triage_timeout is not None else settings.triage_timeout_seconds
@@ -78,6 +80,8 @@ class SessionOrchestrator:
                 self.bridge_registry.remove(self.session_id)
             if self.user_media_registry is not None:
                 self.user_media_registry.remove(self.session_id)
+            if self.tracer:
+                await self.tracer.write_summary()
 
     async def _transition_to_triage(self) -> None:
         await self.store.update(self.session_id, lambda s: setattr(s, "phase", SessionPhase.TRIAGE))
@@ -88,6 +92,8 @@ class SessionOrchestrator:
             "confidence": snap.confidence_score,
         })
         logger.info("Session %s: INTAKE -> TRIAGE", self.session_id)
+        if self.tracer:
+            await self.tracer.log_phase_transition("INTAKE", "TRIAGE")
 
         if self.start_agents:
             await self._start_user_agent()
@@ -144,6 +150,8 @@ class SessionOrchestrator:
             "confidence": snap.confidence_score,
         })
         logger.info("Session %s: TRIAGE -> LIVE_CALL", self.session_id)
+        if self.tracer:
+            await self.tracer.log_phase_transition("TRIAGE", "LIVE_CALL")
 
         if self.start_agents:
             await self._start_dispatch_agent()
@@ -194,6 +202,8 @@ class SessionOrchestrator:
                 "message": "Help is on the way!",
             })
             logger.info("Session %s: LIVE_CALL -> RESOLVED", self.session_id)
+            if self.tracer:
+                await self.tracer.log_phase_transition("LIVE_CALL", "RESOLVED")
             return "RESOLVED"
 
         if snap.call_status == CallStatus.COMPLETED:
@@ -207,6 +217,8 @@ class SessionOrchestrator:
                 "message": "Call completed.",
             })
             logger.info("Session %s: LIVE_CALL -> RESOLVED (call completed)", self.session_id)
+            if self.tracer:
+                await self.tracer.log_phase_transition("LIVE_CALL", "RESOLVED")
             return "RESOLVED"
 
         if snap.call_status == CallStatus.DROPPED:
@@ -223,6 +235,8 @@ class SessionOrchestrator:
             "message": reason,
         })
         logger.error("Session %s: -> FAILED: %s", self.session_id, reason)
+        if self.tracer:
+            await self.tracer.log_phase_transition("*", "FAILED")
 
     def _launch_agent(self, name: str, coro) -> asyncio.Task:
         async def _run() -> None:
@@ -252,7 +266,7 @@ class SessionOrchestrator:
 
             self._user_agent_task = self._launch_agent(
                 "User Agent",
-                run_user_agent(self.session_id, self.store, self.broadcast, media_relay=media_relay),
+                run_user_agent(self.session_id, self.store, self.broadcast, media_relay=media_relay, tracer=self.tracer),
             )
 
     async def _start_dispatch_agent(self) -> None:
@@ -281,6 +295,6 @@ class SessionOrchestrator:
 
             self._dispatch_agent_task = self._launch_agent(
                 "Dispatch Agent",
-                run_dispatch_agent(self.session_id, self.store, self.broadcast, bridge=bridge),
+                run_dispatch_agent(self.session_id, self.store, self.broadcast, bridge=bridge, tracer=self.tracer),
             )
             await asyncio.sleep(0)  # yield to let the task start

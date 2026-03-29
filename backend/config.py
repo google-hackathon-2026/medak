@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     backend_base_url: str = "http://localhost:8080"
     demo_mode: bool = False
     demo_scenario: str = "stroke_neighbor"
+    debug_trace: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

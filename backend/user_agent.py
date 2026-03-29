@@ -139,10 +139,17 @@ TOOL_DECLARATIONS = genai_types.Tool(
         ),
         genai_types.FunctionDeclaration(
             name="append_free_text",
-            description="Append a raw user utterance for context. Call for every meaningful thing the user says.",
+            description=(
+                "Append an observation or detail for context. Call for every meaningful "
+                "thing the user says AND for every significant visual observation from "
+                "the camera (scene description, hazards, injuries, vehicle details, etc.)."
+            ),
             parameters=genai_types.Schema(
                 type="OBJECT",
-                properties={"utterance": genai_types.Schema(type="STRING")},
+                properties={"utterance": genai_types.Schema(
+                    type="STRING",
+                    description="Text to append: a user utterance OR a visual observation from the camera feed",
+                )},
                 required=["utterance"],
             ),
         ),
@@ -197,12 +204,21 @@ RULES:
 - Never say "I am an artificial intelligence". Say "I am your emergency relay assistant."
 - Speak English.
 
+CAMERA OBSERVATION:
+- You receive live camera frames from the user's phone. Actively analyze EVERY image you receive.
+- Describe what you see: scene type (crash, fire, medical emergency), number of people/vehicles, visible injuries, hazards, smoke, flames, debris, road conditions.
+- Immediately record your visual observations by calling append_free_text. Example: "Camera shows a two-car collision at an intersection, one vehicle overturned, debris on road, one person lying on pavement near driver door."
+- If you see victims, estimate their count and visible condition (conscious/moving, unconscious/still, bleeding) and call set_clinical_fields.
+- If you can read street signs, building numbers, or landmarks from the image, use them to call confirm_location.
+- Continue observing — if the scene changes or you notice new details in subsequent frames, record those too.
+
 INFORMATION PRIORITY:
-1. Address confirmation (pre-filled from GPS)
-2. Emergency type (medical, fire, police, gas, other)
-3. Number of victims
-4. Consciousness status
-5. Breathing
+1. Visual scene description (what the camera shows)
+2. Address confirmation (pre-filled from GPS, refine with visual landmarks)
+3. Emergency type (medical, fire, police, gas, other)
+4. Number of victims
+5. Consciousness status
+6. Breathing
 
 If a question appears in dispatch_questions, handle it immediately."""
 
@@ -240,6 +256,7 @@ async def run_user_agent(
     store: SnapshotStore,
     broadcast: BroadcastFn,
     media_relay: UserMediaRelay | None = None,
+    tracer: "DebugTracer | None" = None,
 ) -> None:
     settings = get_settings()
     tools = UserAgentTools(session_id, store, broadcast)
@@ -261,7 +278,7 @@ async def run_user_agent(
     }
 
     config = genai_types.LiveConnectConfig(
-        response_modalities=["AUDIO"],
+        response_modalities=["TEXT"],
         system_instruction=genai_types.Content(
             parts=[genai_types.Part(text=USER_AGENT_SYSTEM_PROMPT)]
         ),
@@ -270,7 +287,7 @@ async def run_user_agent(
 
     try:
         async with client.aio.live.connect(
-            model="gemini-live-2.5-flash-native-audio",
+            model="gemini-2.0-flash-live-001",
             config=config,
         ) as session:
             logger.info("User Agent connected for session %s", session_id)
@@ -289,6 +306,8 @@ async def run_user_agent(
                         parts=[genai_types.Part(text=initial_context)],
                     )
                 )
+                if tracer:
+                    await tracer.save_gemini_input("ua", {"type": "initial_context", "text": initial_context})
 
             async def _media_sender() -> None:
                 """Forward user audio/video/text from the phone to Gemini."""
@@ -308,11 +327,13 @@ async def run_user_agent(
                                     media_chunks=[
                                         genai_types.Blob(
                                             data=audio_bytes,
-                                            mime_type="audio/pcm;rate=16000",
+                                            mime_type="audio/wav",
                                         )
                                     ]
                                 )
                             )
+                            if tracer:
+                                await tracer.save_gemini_input("ua", {"type": "audio", "size_bytes": len(audio_bytes)})
                         elif msg_type == "video_frame":
                             image_bytes = base64.b64decode(msg["data"])
                             await session.send(
@@ -325,6 +346,8 @@ async def run_user_agent(
                                     ]
                                 )
                             )
+                            if tracer:
+                                await tracer.save_gemini_input("ua", {"type": "video_frame", "size_bytes": len(image_bytes)}, image_bytes=image_bytes)
                         elif msg_type == "user_response":
                             text = msg.get("value", "")
                             await session.send_client_content(
@@ -333,6 +356,8 @@ async def run_user_agent(
                                     parts=[genai_types.Part(text=f"User responded: {text}")],
                                 )
                             )
+                            if tracer:
+                                await tracer.save_gemini_input("ua", {"type": "user_response", "text": text})
                     except Exception:
                         logger.exception("Media sender error for session %s", session_id)
 
@@ -342,11 +367,18 @@ async def run_user_agent(
                 async for response in session.receive():
                     # Handle tool calls
                     if response.tool_call:
+                        if tracer:
+                            await tracer.save_gemini_output("ua", {
+                                "type": "tool_call",
+                                "calls": [{"name": fc.name, "args": fc.args} for fc in response.tool_call.function_calls],
+                            })
                         for fc in response.tool_call.function_calls:
                             handler = tool_handlers.get(fc.name)
                             if handler:
                                 try:
                                     result = await handler(fc.args or {})
+                                    if tracer:
+                                        await tracer.save_tool_call(fc.name, fc.args or {}, result)
                                     await session.send_tool_response(
                                         function_responses=[{
                                             "id": fc.id,
@@ -359,6 +391,8 @@ async def run_user_agent(
                                         "Tool call %s failed for session %s, continuing",
                                         fc.name, session_id, exc_info=True,
                                     )
+                                    if tracer:
+                                        await tracer.save_tool_call(fc.name, fc.args or {}, "ERROR")
                                     await session.send_tool_response(
                                         function_responses=[{
                                             "id": fc.id,
@@ -369,6 +403,8 @@ async def run_user_agent(
 
                     # Handle text responses — broadcast as transcript
                     if response.text:
+                        if tracer:
+                            await tracer.save_gemini_output("ua", {"type": "text", "text": response.text})
                         await broadcast(session_id, {
                             "type": "transcript",
                             "speaker": "assistant",

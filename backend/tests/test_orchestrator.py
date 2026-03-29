@@ -143,7 +143,7 @@ async def test_orchestrator_creates_bridge_in_registry(store: SnapshotStore):
     registry = AudioBridgeRegistry()
     dispatched_bridges = []
 
-    async def mock_run_dispatch_agent(session_id, s, b, bridge=None):
+    async def mock_run_dispatch_agent(session_id, s, b, bridge=None, **kwargs):
         dispatched_bridges.append(bridge)
 
     broadcaster = FakeBroadcaster()
@@ -174,7 +174,7 @@ async def test_orchestrator_no_bridge_registry_passes_none(store: SnapshotStore)
     await store.save(snap)
     dispatched_bridges = []
 
-    async def mock_run_dispatch_agent(session_id, s, b, bridge=None):
+    async def mock_run_dispatch_agent(session_id, s, b, bridge=None, **kwargs):
         dispatched_bridges.append(bridge)
 
     broadcaster = FakeBroadcaster()

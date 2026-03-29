@@ -1,6 +1,7 @@
 # backend/main.py
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import time
@@ -17,6 +18,7 @@ from pydantic import BaseModel
 
 from audio_bridge import AudioBridgeRegistry
 from config import get_settings
+from debug_tracer import TracerRegistry, TracingSnapshotStore, create_tracer
 from user_agent import UserMediaRegistry
 from snapshot import (
     EmergencySnapshot,
@@ -104,10 +106,16 @@ def create_app(
     registry = SessionRegistry()
     app.state.registry = registry
 
+    tracer_registry = TracerRegistry()
+    app.state.tracer_registry = tracer_registry
+
     if store is None:
         import redis.asyncio as aioredis
         redis_client = aioredis.from_url(settings.redis_url)
-        store = SnapshotStore(redis_client)
+        if settings.debug_trace:
+            store = TracingSnapshotStore(redis_client, tracer_registry)
+        else:
+            store = SnapshotStore(redis_client)
     app.state.store = store
 
     if bridge_registry is None:
@@ -159,6 +167,11 @@ def create_app(
         snapshot.confidence_score = compute_confidence(snapshot)
         await store.save(snapshot)
 
+        tracer = create_tracer(session_id)
+        if tracer:
+            tracer_registry.register(session_id, tracer)
+            await tracer.save_snapshot(snapshot)
+
         from orchestrator import SessionOrchestrator
         import asyncio
         orch = SessionOrchestrator(
@@ -167,6 +180,7 @@ def create_app(
             broadcast=registry.broadcast,
             bridge_registry=app.state.bridge_registry,
             user_media_registry=app.state.user_media_registry,
+            tracer=tracer,
         )
         task = asyncio.create_task(orch.run())
 
@@ -210,6 +224,7 @@ def create_app(
             return
 
         await registry.add(session_id, ws)
+        ws_tracer = tracer_registry.get(session_id)
 
         try:
             while True:
@@ -221,10 +236,26 @@ def create_app(
                     continue
                 msg_type = msg.get("type")
 
+                if ws_tracer:
+                    await ws_tracer.log_ws_message("inbound", msg)
+
                 if msg_type == "ping":
                     await ws.send_text(json.dumps({"type": "pong"}))
 
                 elif msg_type in ("audio", "video_frame", "user_response"):
+                    # Save raw media to debug traces
+                    if ws_tracer:
+                        if msg_type == "video_frame":
+                            try:
+                                await ws_tracer.save_video_frame(base64.b64decode(msg["data"]))
+                            except Exception:
+                                pass
+                        elif msg_type == "audio":
+                            try:
+                                await ws_tracer.save_audio_chunk(base64.b64decode(msg["data"]))
+                            except Exception:
+                                pass
+
                     # Forward to User Agent's Gemini session
                     relay = app.state.user_media_registry.get(session_id)
                     if relay is not None:
