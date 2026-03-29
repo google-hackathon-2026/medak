@@ -65,7 +65,7 @@ export default function SessionScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const addTranscript = useCallback(
-    (speaker: "assistant" | "user", text: string) => {
+    (speaker: "assistant" | "user" | "dispatch", text: string) => {
       setTranscript((prev) => [
         ...prev,
         {
@@ -172,6 +172,14 @@ export default function SessionScreen() {
     handleUserResponse("TEXT", userInput.trim());
   }, [userInput, handleUserResponse]);
 
+  const handleBackToHome = useCallback(() => {
+    wsRef.current?.disconnect();
+    stopMicRef.current?.();
+    stopCameraRef.current?.stop();
+    if (questionTimerRef.current) clearTimeout(questionTimerRef.current);
+    router.replace("/");
+  }, [router]);
+
   const handleEndCall = useCallback(() => {
     Alert.alert(
       "Prekini poziv?",
@@ -211,46 +219,56 @@ export default function SessionScreen() {
       >
         {/* Main content area */}
         <View style={styles.flex}>
+          {/* Camera is absolutely positioned behind everything */}
           {(phase === "INTAKE" || phase === "TRIAGE" || phase === "LIVE_CALL") &&
             cameraPermission?.granted && (
               <CameraView
                 ref={cameraRef}
-                style={styles.cameraPreview}
+                style={styles.cameraAbsolute}
                 facing="back"
                 animateShutter={false}
                 onCameraReady={onCameraReady}
               />
             )}
 
-          {phase === "INTAKE" && <IntakeView theme={theme} />}
+          {/* Phase views overlay on top of camera */}
+          {phase === "INTAKE" && (
+            <View style={styles.phaseOverlay}>
+              <IntakeView theme={theme} />
+            </View>
+          )}
 
           {phase === "TRIAGE" && (
-            <TriageView
-              theme={theme}
-              confidence={confidence}
-              transcript={transcript}
-              scrollRef={scrollRef}
-              wsConnected={wsConnected}
-            />
+            <View style={styles.phaseOverlay}>
+              <TriageView
+                theme={theme}
+                confidence={confidence}
+                transcript={transcript}
+                scrollRef={scrollRef}
+                wsConnected={wsConnected}
+              />
+            </View>
           )}
 
           {phase === "LIVE_CALL" && (
-            <LiveCallView
-              theme={theme}
-              transcript={transcript}
-              scrollRef={scrollRef}
-              emergencyLabel={emergencyLabel}
-              emergencyNumber={emergencyNumber}
-              emergencyType={emergencyType}
-            />
+            <View style={styles.phaseOverlay}>
+              <LiveCallView
+                theme={theme}
+                transcript={transcript}
+                scrollRef={scrollRef}
+                emergencyLabel={emergencyLabel}
+                emergencyNumber={emergencyNumber}
+                emergencyType={emergencyType}
+              />
+            </View>
           )}
 
           {phase === "RESOLVED" && (
-            <ResolvedView theme={theme} etaMinutes={etaMinutes} />
+            <ResolvedView theme={theme} etaMinutes={etaMinutes} onBackToHome={handleBackToHome} />
           )}
 
           {phase === "FAILED" && (
-            <FailedView theme={theme} message={failedMessage} emergencyNumber={emergencyNumber} />
+            <FailedView theme={theme} message={failedMessage} emergencyNumber={emergencyNumber} onBackToHome={handleBackToHome} />
           )}
         </View>
 
@@ -353,25 +371,35 @@ type ThemeProp = { theme: ReturnType<typeof useAppTheme> };
 
 function TranscriptBubble({ entry, theme }: { entry: TranscriptEntry } & ThemeProp) {
   const isUser = entry.speaker === "user";
-  const bgColor = isUser
-    ? theme.custom.bubbleUser
-    : theme.custom.bubbleAssistant;
+  const isDispatch = entry.speaker === "dispatch";
+  const bgColor = isDispatch
+    ? "#D84315"
+    : isUser
+      ? theme.custom.bubbleUser
+      : theme.custom.bubbleAssistant;
+  const label = isDispatch ? "Dispatch" : isUser ? STRINGS.you : STRINGS.system;
 
   return (
     <View
       style={[
         styles.bubble,
         isUser ? styles.bubbleRight : styles.bubbleLeft,
+        isDispatch && styles.bubbleLeft,
         { backgroundColor: bgColor },
+        isDispatch && styles.bubbleDispatch,
       ]}
     >
       <Text
         variant="labelSmall"
-        style={{ color: theme.colors.onSurfaceVariant, marginBottom: 2 }}
+        style={{
+          color: isDispatch ? "#FFF3E0" : theme.colors.onSurfaceVariant,
+          marginBottom: 2,
+          fontWeight: isDispatch ? "700" : "400",
+        }}
       >
-        {isUser ? STRINGS.you : STRINGS.system}
+        {label}
       </Text>
-      <Text variant="bodyLarge" style={{ color: theme.colors.onPrimary }}>
+      <Text variant="bodyLarge" style={{ color: isDispatch ? "#FFFFFF" : theme.colors.onPrimary }}>
         {entry.text}
       </Text>
     </View>
@@ -567,7 +595,7 @@ function LiveCallView({
   );
 }
 
-function ResolvedView({ theme, etaMinutes }: ThemeProp & { etaMinutes: number | null }) {
+function ResolvedView({ theme, etaMinutes, onBackToHome }: ThemeProp & { etaMinutes: number | null; onBackToHome: () => void }) {
   return (
     <View style={styles.centeredView}>
       <Text style={[styles.statusIcon, { color: theme.custom.success }]}>✓</Text>
@@ -603,11 +631,20 @@ function ResolvedView({ theme, etaMinutes }: ThemeProp & { etaMinutes: number | 
       >
         {STRINGS.stay_on_location}
       </Text>
+      <Button
+        mode="contained"
+        onPress={onBackToHome}
+        style={{ marginTop: 32, borderRadius: 28, minWidth: 200 }}
+        contentStyle={{ height: 52 }}
+        icon="home"
+      >
+        {STRINGS.home_screen}
+      </Button>
     </View>
   );
 }
 
-function FailedView({ theme, message, emergencyNumber }: ThemeProp & { message: string | null; emergencyNumber: string }) {
+function FailedView({ theme, message, emergencyNumber, onBackToHome }: ThemeProp & { message: string | null; emergencyNumber: string; onBackToHome: () => void }) {
   return (
     <View style={styles.centeredView}>
       <Text style={[styles.statusIcon, { color: theme.colors.error }]}>!</Text>
@@ -643,6 +680,15 @@ function FailedView({ theme, message, emergencyNumber }: ThemeProp & { message: 
           {message}
         </Text>
       )}
+      <Button
+        mode="contained"
+        onPress={onBackToHome}
+        style={{ marginTop: 32, borderRadius: 28, minWidth: 200 }}
+        contentStyle={{ height: 52 }}
+        icon="home"
+      >
+        {STRINGS.home_screen}
+      </Button>
     </View>
   );
 }
@@ -660,8 +706,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 32,
   },
-  cameraPreview: {
-    flex: 1,
+  cameraAbsolute: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  phaseOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    zIndex: 1,
   },
   statusBar: {
     padding: 16,
@@ -704,6 +755,10 @@ const styles = StyleSheet.create({
   },
   bubbleRight: {
     alignSelf: "flex-end",
+  },
+  bubbleDispatch: {
+    borderWidth: 1,
+    borderColor: "#FF6E40",
   },
   liveCallBanner: {
     paddingHorizontal: 20,

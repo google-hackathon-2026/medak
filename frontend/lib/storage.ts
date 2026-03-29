@@ -15,7 +15,12 @@ export const DEFAULT_USER_INFO: UserInfo = {
 export async function getUserInfo(): Promise<UserInfo> {
   const raw = await AsyncStorage.getItem(KEYS.USER_INFO);
   if (!raw) return { ...DEFAULT_USER_INFO };
-  return { ...DEFAULT_USER_INFO, ...JSON.parse(raw) };
+  try {
+    return { ...DEFAULT_USER_INFO, ...JSON.parse(raw) };
+  } catch {
+    await AsyncStorage.removeItem(KEYS.USER_INFO);
+    return { ...DEFAULT_USER_INFO };
+  }
 }
 
 export async function saveUserInfo(info: UserInfo): Promise<void> {

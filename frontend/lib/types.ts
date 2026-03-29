@@ -53,7 +53,7 @@ export interface SessionStatus {
 
 // WebSocket messages: server -> client
 export type WSMessageFromServer =
-  | { type: "transcript"; speaker: "assistant" | "user"; text: string }
+  | { type: "transcript"; speaker: "assistant" | "user" | "dispatch"; text: string }
   | { type: "STATUS_UPDATE"; phase: SessionPhase; confidence: number }
   | { type: "user_question"; question: string }
   | { type: "pong" }
@@ -75,7 +75,7 @@ export type WSMessageToServer =
 // Transcript entry for display
 export interface TranscriptEntry {
   id: string;
-  speaker: "assistant" | "user";
+  speaker: "assistant" | "user" | "dispatch";
   text: string;
   timestamp: number;
 }
