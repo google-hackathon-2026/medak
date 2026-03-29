@@ -65,7 +65,7 @@ export default function SessionScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const addTranscript = useCallback(
-    (speaker: "assistant" | "user" | "dispatch", text: string) => {
+    (speaker: "assistant" | "user" | "dispatch" | "system", text: string) => {
       setTranscript((prev) => [
         ...prev,
         {
@@ -107,6 +107,10 @@ export default function SessionScreen() {
         setPhase("FAILED");
         setFailedMessage(message);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      },
+      onError: (message) => {
+        console.warn("[WS error]", message);
+        addTranscript("system", `⚠ ${message}`);
       },
       onConnectionChange: setWsConnected,
     });
@@ -372,34 +376,38 @@ type ThemeProp = { theme: ReturnType<typeof useAppTheme> };
 function TranscriptBubble({ entry, theme }: { entry: TranscriptEntry } & ThemeProp) {
   const isUser = entry.speaker === "user";
   const isDispatch = entry.speaker === "dispatch";
+  const isSystem = entry.speaker === "system";
   const bgColor = isDispatch
     ? "#D84315"
-    : isUser
-      ? theme.custom.bubbleUser
-      : theme.custom.bubbleAssistant;
-  const label = isDispatch ? "Dispatch" : isUser ? STRINGS.you : STRINGS.system;
+    : isSystem
+      ? theme.colors.surfaceVariant
+      : isUser
+        ? theme.custom.bubbleUser
+        : theme.custom.bubbleAssistant;
+  const label = isDispatch ? "Dispatch" : isSystem ? "System" : isUser ? STRINGS.you : STRINGS.system;
 
   return (
     <View
       style={[
         styles.bubble,
         isUser ? styles.bubbleRight : styles.bubbleLeft,
-        isDispatch && styles.bubbleLeft,
+        (isDispatch || isSystem) && styles.bubbleLeft,
         { backgroundColor: bgColor },
         isDispatch && styles.bubbleDispatch,
+        isSystem && styles.bubbleSystem,
       ]}
     >
       <Text
         variant="labelSmall"
         style={{
-          color: isDispatch ? "#FFF3E0" : theme.colors.onSurfaceVariant,
+          color: isDispatch ? "#FFF3E0" : isSystem ? theme.colors.onSurfaceVariant : theme.colors.onSurfaceVariant,
           marginBottom: 2,
           fontWeight: isDispatch ? "700" : "400",
         }}
       >
         {label}
       </Text>
-      <Text variant="bodyLarge" style={{ color: isDispatch ? "#FFFFFF" : theme.colors.onPrimary }}>
+      <Text variant="bodyLarge" style={{ color: isDispatch ? "#FFFFFF" : isSystem ? theme.colors.onSurface : theme.colors.onPrimary }}>
         {entry.text}
       </Text>
     </View>
@@ -759,6 +767,11 @@ const styles = StyleSheet.create({
   bubbleDispatch: {
     borderWidth: 1,
     borderColor: "#FF6E40",
+  },
+  bubbleSystem: {
+    alignSelf: "center",
+    maxWidth: "90%",
+    opacity: 0.8,
   },
   liveCallBanner: {
     paddingHorizontal: 20,
