@@ -131,19 +131,23 @@ async def run_demo_dispatch_agent(
 
         if action == "status_dialing":
             await tools.update_call_status("DIALING")
+            snap = await store.load(session_id)
             await broadcast(session_id, {
                 "type": "STATUS_UPDATE",
                 "phase": "LIVE_CALL",
                 "call_status": "DIALING",
+                "confidence": snap.confidence_score if snap else 0.0,
             })
             logger.info("Demo Dispatch: DIALING")
 
         elif action == "status_connected":
             await tools.update_call_status("CONNECTED")
+            snap = await store.load(session_id)
             await broadcast(session_id, {
                 "type": "STATUS_UPDATE",
                 "phase": "LIVE_CALL",
                 "call_status": "CONNECTED",
+                "confidence": snap.confidence_score if snap else 0.0,
             })
             logger.info("Demo Dispatch: CONNECTED")
 

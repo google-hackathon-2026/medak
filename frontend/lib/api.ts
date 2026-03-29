@@ -1,11 +1,12 @@
 import { SOSRequest, SOSResponse, SessionStatus } from "./types";
 import { API_BASE } from "./config";
 
-export async function triggerSOS(request: SOSRequest): Promise<SOSResponse> {
+export async function triggerSOS(request: SOSRequest, signal?: AbortSignal): Promise<SOSResponse> {
   const res = await fetch(`${API_BASE}/api/sos`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
+    signal,
   });
 
   if (!res.ok) {

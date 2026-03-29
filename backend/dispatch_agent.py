@@ -170,11 +170,15 @@ async def run_dispatch_agent(
     if settings.twilio_account_sid and settings.emergency_number:
         try:
             twilio_client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
-            call = twilio_client.calls.create(
+            twiml_url = f"{settings.backend_base_url}/api/session/{session_id}/twilio/twiml"
+            status_url = f"{settings.backend_base_url}/api/session/{session_id}/twilio/status"
+            # FIX: Wrap synchronous Twilio SDK call in to_thread to avoid blocking the event loop
+            call = await asyncio.to_thread(
+                twilio_client.calls.create,
                 to=settings.emergency_number,
                 from_=settings.twilio_from_number,
-                url=f"{settings.backend_base_url}/api/session/{session_id}/twilio/twiml",
-                status_callback=f"{settings.backend_base_url}/api/session/{session_id}/twilio/status",
+                url=twiml_url,
+                status_callback=status_url,
             )
             call_sid = call.sid
             await tools.update_call_status("DIALING")
