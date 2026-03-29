@@ -8,6 +8,7 @@ import {
   Animated,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -65,7 +66,7 @@ export default function SessionScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const addTranscript = useCallback(
-    (speaker: "assistant" | "user", text: string) => {
+    (speaker: "assistant" | "user" | "dispatch", text: string) => {
       setTranscript((prev) => [
         ...prev,
         {
@@ -215,34 +216,42 @@ export default function SessionScreen() {
             cameraPermission?.granted && (
               <CameraView
                 ref={cameraRef}
-                style={styles.cameraPreview}
+                style={StyleSheet.absoluteFillObject}
                 facing="back"
                 animateShutter={false}
                 onCameraReady={onCameraReady}
               />
             )}
 
-          {phase === "INTAKE" && <IntakeView theme={theme} />}
+          {phase === "INTAKE" && (
+            <View style={cameraPermission?.granted ? styles.cameraOverlay : styles.flex}>
+              <IntakeView theme={theme} />
+            </View>
+          )}
 
           {phase === "TRIAGE" && (
-            <TriageView
-              theme={theme}
-              confidence={confidence}
-              transcript={transcript}
-              scrollRef={scrollRef}
-              wsConnected={wsConnected}
-            />
+            <View style={cameraPermission?.granted ? styles.cameraOverlay : styles.flex}>
+              <TriageView
+                theme={theme}
+                confidence={confidence}
+                transcript={transcript}
+                scrollRef={scrollRef}
+                wsConnected={wsConnected}
+              />
+            </View>
           )}
 
           {phase === "LIVE_CALL" && (
-            <LiveCallView
-              theme={theme}
-              transcript={transcript}
-              scrollRef={scrollRef}
-              emergencyLabel={emergencyLabel}
-              emergencyNumber={emergencyNumber}
-              emergencyType={emergencyType}
-            />
+            <View style={cameraPermission?.granted ? styles.cameraOverlay : styles.flex}>
+              <LiveCallView
+                theme={theme}
+                transcript={transcript}
+                scrollRef={scrollRef}
+                emergencyLabel={emergencyLabel}
+                emergencyNumber={emergencyNumber}
+                emergencyType={emergencyType}
+              />
+            </View>
           )}
 
           {phase === "RESOLVED" && (
@@ -353,9 +362,12 @@ type ThemeProp = { theme: ReturnType<typeof useAppTheme> };
 
 function TranscriptBubble({ entry, theme }: { entry: TranscriptEntry } & ThemeProp) {
   const isUser = entry.speaker === "user";
-  const bgColor = isUser
-    ? theme.custom.bubbleUser
-    : theme.custom.bubbleAssistant;
+  const isDispatch = entry.speaker === "dispatch";
+  const bgColor = isDispatch
+    ? "#E65100"
+    : isUser
+      ? theme.custom.bubbleUser
+      : theme.custom.bubbleAssistant;
 
   return (
     <View
@@ -367,9 +379,9 @@ function TranscriptBubble({ entry, theme }: { entry: TranscriptEntry } & ThemePr
     >
       <Text
         variant="labelSmall"
-        style={{ color: theme.colors.onSurfaceVariant, marginBottom: 2 }}
+        style={{ color: isDispatch ? "#FFE0B2" : theme.colors.onSurfaceVariant, marginBottom: 2 }}
       >
-        {isUser ? STRINGS.you : STRINGS.system}
+        {isUser ? STRINGS.you : isDispatch ? "Dispečer" : STRINGS.system}
       </Text>
       <Text variant="bodyLarge" style={{ color: theme.colors.onPrimary }}>
         {entry.text}
@@ -568,6 +580,7 @@ function LiveCallView({
 }
 
 function ResolvedView({ theme, etaMinutes }: ThemeProp & { etaMinutes: number | null }) {
+  const router = useRouter();
   return (
     <View style={styles.centeredView}>
       <Text style={[styles.statusIcon, { color: theme.custom.success }]}>✓</Text>
@@ -603,11 +616,15 @@ function ResolvedView({ theme, etaMinutes }: ThemeProp & { etaMinutes: number | 
       >
         {STRINGS.stay_on_location}
       </Text>
+      <Pressable onPress={() => router.replace('/')} style={{marginTop: 20, padding: 16, backgroundColor: '#333', borderRadius: 8}}>
+        <Text style={{color: '#fff', textAlign: 'center', fontWeight: 'bold'}}>HOME SCREEN</Text>
+      </Pressable>
     </View>
   );
 }
 
 function FailedView({ theme, message, emergencyNumber }: ThemeProp & { message: string | null; emergencyNumber: string }) {
+  const router = useRouter();
   return (
     <View style={styles.centeredView}>
       <Text style={[styles.statusIcon, { color: theme.colors.error }]}>!</Text>
@@ -643,6 +660,9 @@ function FailedView({ theme, message, emergencyNumber }: ThemeProp & { message: 
           {message}
         </Text>
       )}
+      <Pressable onPress={() => router.replace('/')} style={{marginTop: 20, padding: 16, backgroundColor: '#333', borderRadius: 8}}>
+        <Text style={{color: '#fff', textAlign: 'center', fontWeight: 'bold'}}>HOME SCREEN</Text>
+      </Pressable>
     </View>
   );
 }

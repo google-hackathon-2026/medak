@@ -1,5 +1,5 @@
 import { triggerSOS } from "./api";
-import { getCurrentLocation } from "./location";
+import { getCurrentLocation, reverseGeocode } from "./location";
 import { getDeviceId, getUserId } from "./storage";
 import type { EmergencyType } from "./types";
 
@@ -33,13 +33,30 @@ export async function initiateSOSCall(options: {
   const lat = location?.latitude ?? 0;
   const lng = location?.longitude ?? 0;
 
-  const response = await triggerSOS({
-    emergency_type: emergencyType,
-    lat,
-    lng,
-    user_id: userId,
-    device_id: deviceId,
-  });
+  // Reverse-geocode address in parallel (best-effort, never blocks)
+  const address = location
+    ? await reverseGeocode(lat, lng).catch(() => null)
+    : null;
 
-  return { sessionId: response.session_id };
+  // Abort controller with 10s timeout
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const response = await triggerSOS(
+      {
+        emergency_type: emergencyType,
+        lat,
+        lng,
+        address: address ?? undefined,
+        user_id: userId,
+        device_id: deviceId,
+      },
+      controller.signal,
+    );
+
+    return { sessionId: response.session_id };
+  } finally {
+    clearTimeout(timeout);
+  }
 }

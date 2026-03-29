@@ -1,2 +1,2 @@
 export const API_BASE =
-  process.env.EXPO_PUBLIC_API_URL || "http://10.225.114.241:8080";
+  process.env.EXPO_PUBLIC_API_URL || "http://localhost:8080";
