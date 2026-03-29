@@ -115,112 +115,118 @@ async def run_demo_dispatch_agent(
     broadcast: BroadcastFn,
 ) -> None:
     """Run the scripted dispatch agent."""
-    tools = DispatchAgentTools(session_id, store, broadcast)
-    start = asyncio.get_event_loop().time()
+    try:
+        tools = DispatchAgentTools(session_id, store, broadcast)
+        start = asyncio.get_event_loop().time()
 
-    logger.info("Demo Dispatch Agent started for session %s", session_id)
+        logger.info("Demo Dispatch Agent started for session %s", session_id)
 
-    for entry in DISPATCH_SCRIPT:
-        delay, action = entry[0], entry[1]
+        for entry in DISPATCH_SCRIPT:
+            delay, action = entry[0], entry[1]
 
-        # Wait for the right moment
-        elapsed = asyncio.get_event_loop().time() - start
-        wait = delay - elapsed
-        if wait > 0:
-            await asyncio.sleep(wait)
+            # Wait for the right moment
+            elapsed = asyncio.get_event_loop().time() - start
+            wait = delay - elapsed
+            if wait > 0:
+                await asyncio.sleep(wait)
 
-        if action == "status_dialing":
-            await tools.update_call_status("DIALING")
-            snap = await store.load(session_id)
-            await broadcast(session_id, {
-                "type": "STATUS_UPDATE",
-                "phase": "LIVE_CALL",
-                "call_status": "DIALING",
-                "confidence": snap.confidence_score if snap else 0.0,
-            })
-            logger.info("Demo Dispatch: DIALING")
+            if action == "status_dialing":
+                await tools.update_call_status("DIALING")
+                snap = await store.load(session_id)
+                await broadcast(session_id, {
+                    "type": "STATUS_UPDATE",
+                    "phase": "LIVE_CALL",
+                    "call_status": "DIALING",
+                    "confidence": snap.confidence_score if snap else 0.0,
+                })
+                logger.info("Demo Dispatch: DIALING")
 
-        elif action == "status_connected":
-            await tools.update_call_status("CONNECTED")
-            snap = await store.load(session_id)
-            await broadcast(session_id, {
-                "type": "STATUS_UPDATE",
-                "phase": "LIVE_CALL",
-                "call_status": "CONNECTED",
-                "confidence": snap.confidence_score if snap else 0.0,
-            })
-            logger.info("Demo Dispatch: CONNECTED")
+            elif action == "status_connected":
+                await tools.update_call_status("CONNECTED")
+                snap = await store.load(session_id)
+                await broadcast(session_id, {
+                    "type": "STATUS_UPDATE",
+                    "phase": "LIVE_CALL",
+                    "call_status": "CONNECTED",
+                    "confidence": snap.confidence_score if snap else 0.0,
+                })
+                logger.info("Demo Dispatch: CONNECTED")
 
-        elif action == "transcript":
-            speaker, text = entry[2], entry[3]
-            await broadcast(session_id, {
-                "type": "transcript",
-                "speaker": speaker,
-                "text": text,
-            })
-            logger.info("Demo Dispatch transcript [%s]: %s", speaker, text[:60])
+            elif action == "transcript":
+                speaker, text = entry[2], entry[3]
+                await broadcast(session_id, {
+                    "type": "transcript",
+                    "speaker": speaker,
+                    "text": text,
+                })
+                logger.info("Demo Dispatch transcript [%s]: %s", speaker, text[:60])
 
-        elif action == "get_brief_and_speak":
-            brief = await tools.get_emergency_brief()
-            speech = (
-                f"{STRINGS['opening_statement']} {_brief_to_speech(brief)}"
-            )
-            await broadcast(session_id, {
-                "type": "transcript",
-                "speaker": "assistant",
-                "text": speech,
-            })
-            logger.info("Demo Dispatch: delivered brief")
-
-        elif action == "queue_question":
-            question = entry[2]
-            await tools.queue_question_for_user(question)
-            # Also broadcast a "waiting" message
-            await broadcast(session_id, {
-                "type": "transcript",
-                "speaker": "assistant",
-                "text": STRINGS["checking_with_caller"],
-            })
-            # Surface the question to the user's phone
-            await broadcast(session_id, {
-                "type": "user_question",
-                "question": question,
-            })
-            logger.info("Demo Dispatch: queued question: %s", question)
-
-        elif action == "relay_answer":
-            question = entry[2]
-            # Poll for answer (demo user agent should have answered by now)
-            answer = None
-            for _ in range(10):
-                answer = await tools.get_user_answer(question)
-                if answer != "PENDING":
-                    break
-                await asyncio.sleep(0.5)
-
-            if answer and answer != "PENDING":
+            elif action == "get_brief_and_speak":
+                brief = await tools.get_emergency_brief()
+                speech = (
+                    f"{STRINGS['opening_statement']} {_brief_to_speech(brief)}"
+                )
                 await broadcast(session_id, {
                     "type": "transcript",
                     "speaker": "assistant",
-                    "text": answer,
+                    "text": speech,
                 })
-                logger.info("Demo Dispatch: relayed answer: %s", answer)
-            else:
+                logger.info("Demo Dispatch: delivered brief")
+
+            elif action == "queue_question":
+                question = entry[2]
+                await tools.queue_question_for_user(question)
+                # Also broadcast a "waiting" message
                 await broadcast(session_id, {
                     "type": "transcript",
                     "speaker": "assistant",
-                    "text": STRINGS["still_waiting"],
+                    "text": STRINGS["checking_with_caller"],
                 })
-                logger.warning("Demo Dispatch: no answer received for: %s", question)
+                # Surface the question to the user's phone
+                await broadcast(session_id, {
+                    "type": "user_question",
+                    "question": question,
+                })
+                logger.info("Demo Dispatch: queued question: %s", question)
 
-        elif action == "confirm":
-            eta = entry[2]
-            await tools.confirm_dispatch(eta)
-            await broadcast(session_id, {
-                "type": "transcript",
-                "speaker": "assistant",
-                "text": STRINGS["team_dispatched"].format(eta=eta),
-            })
-            logger.info("Demo Dispatch: confirmed dispatch, ETA %d min", eta)
+            elif action == "relay_answer":
+                question = entry[2]
+                # Poll for answer (demo user agent should have answered by now)
+                answer = None
+                for _ in range(10):
+                    answer = await tools.get_user_answer(question)
+                    if answer != "PENDING":
+                        break
+                    await asyncio.sleep(0.5)
 
-    logger.info("Demo Dispatch Agent complete for session %s", session_id)
+                if answer and answer != "PENDING":
+                    await broadcast(session_id, {
+                        "type": "transcript",
+                        "speaker": "assistant",
+                        "text": answer,
+                    })
+                    logger.info("Demo Dispatch: relayed answer: %s", answer)
+                else:
+                    await broadcast(session_id, {
+                        "type": "transcript",
+                        "speaker": "assistant",
+                        "text": STRINGS["still_waiting"],
+                    })
+                    logger.warning("Demo Dispatch: no answer received for: %s", question)
+
+            elif action == "confirm":
+                eta = entry[2]
+                await tools.confirm_dispatch(eta)
+                await broadcast(session_id, {
+                    "type": "transcript",
+                    "speaker": "assistant",
+                    "text": STRINGS["team_dispatched"].format(eta=eta),
+                })
+                logger.info("Demo Dispatch: confirmed dispatch, ETA %d min", eta)
+
+        logger.info("Demo Dispatch Agent complete for session %s", session_id)
+    except asyncio.CancelledError:
+        raise  # let cancellation propagate
+    except Exception:
+        logger.exception("Demo dispatch agent crashed for session %s", session_id)
+        await broadcast(session_id, {"type": "transcript", "speaker": "system", "text": "Agent error — restarting..."})
