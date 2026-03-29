@@ -2,11 +2,12 @@ import { API_BASE } from "./config";
 import type { SessionPhase, WSMessageFromServer, WSMessageToServer } from "./types";
 
 export interface WSCallbacks {
-  onTranscript: (speaker: "assistant" | "user", text: string) => void;
+  onTranscript: (speaker: "assistant" | "user" | "dispatch" | "system", text: string) => void;
   onStatusUpdate: (phase: SessionPhase, confidence: number) => void;
   onUserQuestion: (question: string) => void;
   onResolved: (etaMinutes: number, message: string) => void;
   onFailed: (message: string) => void;
+  onError: (message: string) => void;
   onConnectionChange: (connected: boolean) => void;
 }
 
@@ -116,6 +117,9 @@ export class SessionWebSocket {
         break;
       case "FAILED":
         this.callbacks.onFailed(msg.message);
+        break;
+      case "error":
+        this.callbacks.onError(msg.message);
         break;
       case "pong":
         break;

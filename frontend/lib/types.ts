@@ -15,7 +15,8 @@ export type CallStatus =
   | "DIALING"
   | "CONNECTED"
   | "CONFIRMED"
-  | "DROPPED";
+  | "DROPPED"
+  | "COMPLETED";
 
 // Location from device
 export interface LocationData {
@@ -53,12 +54,13 @@ export interface SessionStatus {
 
 // WebSocket messages: server -> client
 export type WSMessageFromServer =
-  | { type: "transcript"; speaker: "assistant" | "user" | "dispatch"; text: string }
+  | { type: "transcript"; speaker: "assistant" | "user" | "dispatch" | "system"; text: string }
   | { type: "STATUS_UPDATE"; phase: SessionPhase; confidence: number }
   | { type: "user_question"; question: string }
   | { type: "pong" }
   | { type: "RESOLVED"; eta_minutes: number; message: string }
-  | { type: "FAILED"; message: string };
+  | { type: "FAILED"; message: string }
+  | { type: "error"; message: string };
 
 // WebSocket messages: client -> server
 export type WSMessageToServer =
@@ -75,7 +77,7 @@ export type WSMessageToServer =
 // Transcript entry for display
 export interface TranscriptEntry {
   id: string;
-  speaker: "assistant" | "user" | "dispatch";
+  speaker: "assistant" | "user" | "dispatch" | "system";
   text: string;
   timestamp: number;
 }

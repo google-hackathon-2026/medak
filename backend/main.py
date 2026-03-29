@@ -170,15 +170,15 @@ def create_app(
         )
         task = asyncio.create_task(orch.run())
 
-        # FIX: Add done callback so fire-and-forget errors are logged + user notified
-        def _orch_done(t: asyncio.Task, sid=session_id, reg=registry):
+        # FIX: Capture loop reference now (inside async context) for use in sync callback
+        loop = asyncio.get_running_loop()
+
+        def _orch_done(t: asyncio.Task, sid=session_id, reg=registry, _loop=loop):
             if t.cancelled():
                 logger.warning("Orchestrator cancelled for %s", sid)
             elif t.exception():
                 logger.error("Orchestrator failed for %s: %s", sid, t.exception())
-                # Schedule broadcast on the event loop
-                loop = asyncio.get_event_loop()
-                loop.create_task(reg.broadcast(sid, {"type": "FAILED", "message": "Internal error. Please try again."}))
+                _loop.create_task(reg.broadcast(sid, {"type": "FAILED", "message": "Internal error. Please try again."}))
 
         task.add_done_callback(_orch_done)
 
