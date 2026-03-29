@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     backend_base_url: str = "http://localhost:8080"
     demo_mode: bool = False
     demo_scenario: str = "stroke_neighbor"
+    livedemo_mode: str = "off"  # "off" | "lite" | "full"
+    livedemo_scenario: str = "armed_threat"
     debug_trace: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -34,6 +36,16 @@ class Settings(BaseSettings):
                 "Use a team member's phone for demo."
             )
         return v
+
+    @field_validator("livedemo_mode")
+    @classmethod
+    def validate_livedemo_mode(cls, v: str) -> str:
+        allowed = ("off", "lite", "full")
+        if v.lower() not in allowed:
+            raise ValueError(
+                f"livedemo_mode must be one of {allowed}, got '{v}'"
+            )
+        return v.lower()
 
 
 @lru_cache

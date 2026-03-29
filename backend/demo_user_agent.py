@@ -61,8 +61,54 @@ STROKE_NEIGHBOR_SCRIPT: list[tuple] = [
      STRINGS["stroke_signs"]),
 ]
 
+# ---------------------------------------------------------------------------
+# Armed threat scenario (live demo)
+# ---------------------------------------------------------------------------
+ARMED_THREAT_STRINGS = {
+    "analyzing": "Analyzing environment... Detecting armed confrontation.",
+    "police_detected": "Police emergency detected.",
+    "free_text_scene": "Armed confrontation at public event venue. One individual has drawn a firearm.",
+    "location_confirmed": "Location confirmed.",
+    "clinical_summary": "Two individuals involved. Both conscious.",
+    "escalation": "Situation is tense, could escalate.",
+    "free_text_detail": "Aggressor armed with handgun, victim compliant and kneeling. No shots fired.",
+}
+
+ARMED_THREAT_SCRIPT: list[tuple] = [
+    (1.0, "transcript", None,
+     ARMED_THREAT_STRINGS["analyzing"]),
+
+    (2.5, "tool_call", ("set_emergency_type", {"emergency_type": "POLICE"}),
+     ARMED_THREAT_STRINGS["police_detected"]),
+
+    (4.0, "tool_call", ("append_free_text", {"utterance": ARMED_THREAT_STRINGS["free_text_scene"]}),
+     None),
+
+    (5.5, "tool_call", ("confirm_location", {"address": "Event venue, conference hall"}),
+     ARMED_THREAT_STRINGS["location_confirmed"]),
+
+    (7.0, "tool_call", ("set_clinical_fields", {"victim_count": 2, "conscious": True, "breathing": True}),
+     ARMED_THREAT_STRINGS["clinical_summary"]),
+
+    (8.5, "tool_call", ("append_free_text", {"utterance": ARMED_THREAT_STRINGS["free_text_detail"]}),
+     ARMED_THREAT_STRINGS["escalation"]),
+]
+
+ARMED_THREAT_ANSWER_MAP: dict[str, str] = {
+    "Are there any weapons involved?": "Yes, one individual has a handgun.",
+    "Has anyone been shot?": "No shots have been fired yet.",
+    "Is anyone injured?": "No injuries reported, the victim is kneeling on the ground.",
+    "How many people are involved?": "Two individuals — one aggressor, one victim.",
+    "Is the victim conscious?": "Yes, both individuals are conscious.",
+    "Is anyone breathing?": "Yes, both individuals are breathing normally.",
+}
+
+# ---------------------------------------------------------------------------
+# Scenario registry
+# ---------------------------------------------------------------------------
 SCENARIOS: dict[str, list[tuple]] = {
     "stroke_neighbor": STROKE_NEIGHBOR_SCRIPT,
+    "armed_threat": ARMED_THREAT_SCRIPT,
 }
 
 # Hardcoded answers for known dispatch questions
@@ -71,6 +117,11 @@ ANSWER_MAP: dict[str, str] = {
     "Is the patient breathing?": STRINGS["answer_breathing"],
     "How old is the patient?": STRINGS["answer_age"],
     "Is the patient taking any medication?": STRINGS["answer_medication"],
+}
+
+SCENARIO_ANSWER_MAPS: dict[str, dict[str, str]] = {
+    "stroke_neighbor": ANSWER_MAP,
+    "armed_threat": ARMED_THREAT_ANSWER_MAP,
 }
 
 
@@ -134,7 +185,8 @@ async def run_demo_user_agent(
                 # Brief "checking" delay for visual effect
                 await asyncio.sleep(1.5)
 
-                answer = ANSWER_MAP.get(pending, STRINGS["checking_with_caller"])
+                answers = SCENARIO_ANSWER_MAPS.get(scenario, ANSWER_MAP)
+                answer = answers.get(pending, STRINGS["checking_with_caller"])
                 await tools.answer_dispatch_question(pending, answer)
 
                 await broadcast(session_id, {
