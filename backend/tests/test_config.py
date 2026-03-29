@@ -32,3 +32,23 @@ def test_settings_rejects_padded_112():
 def test_settings_rejects_plus_112():
     with pytest.raises(ValueError, match="real emergency"):
         Settings(google_api_key="k", emergency_number="+112")
+
+
+def test_settings_livedemo_mode_defaults_to_off():
+    s = Settings(google_api_key="k", emergency_number="+381601234567")
+    assert s.livedemo_mode == "off"
+
+
+def test_settings_livedemo_mode_full():
+    s = Settings(google_api_key="k", emergency_number="+381601234567", livedemo_mode="full")
+    assert s.livedemo_mode == "full"
+
+
+def test_settings_livedemo_mode_lite():
+    s = Settings(google_api_key="k", emergency_number="+381601234567", livedemo_mode="LITE")
+    assert s.livedemo_mode == "lite"  # normalized to lowercase
+
+
+def test_settings_livedemo_mode_invalid():
+    with pytest.raises(ValueError, match="livedemo_mode"):
+        Settings(google_api_key="k", emergency_number="+381601234567", livedemo_mode="banana")

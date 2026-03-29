@@ -10,6 +10,7 @@ from google.genai import types as genai_types
 from twilio.rest import Client as TwilioClient
 
 from config import create_genai_client, get_settings
+from livedemo_briefs import get_livedemo_brief
 from snapshot import (
     CallStatus,
     EmergencySnapshot,
@@ -145,6 +146,77 @@ RULES:
 - IMPORTANT: When the operator speaks, stop talking and listen. Only respond to questions."""
 
 
+def _brief_is_sufficient(brief: str) -> bool:
+    """Check if a real brief has enough content to be useful for dispatch."""
+    if not brief or len(brief) < 30:
+        return False
+    if "No session data available" in brief:
+        return False
+    if "Details:" not in brief:
+        return False
+    if "Type: unknown" in brief:
+        return False
+    return True
+
+
+async def _get_address_from_snapshot(store: SnapshotStore, session_id: str) -> str:
+    """Extract the best available address string from the snapshot."""
+    snap = await store.load(session_id)
+    if snap and snap.location:
+        if snap.location.address:
+            return snap.location.address
+        if snap.location.lat is not None and snap.location.lng is not None:
+            return f"GPS: {snap.location.lat}, {snap.location.lng}"
+    return "GPS location provided"
+
+
+async def _resolve_brief(
+    tools: DispatchAgentTools,
+    session_id: str,
+    store: SnapshotStore,
+) -> str:
+    """
+    Determine the emergency brief based on LIVEDEMO_MODE.
+
+    - "full": Always return hardcoded brief (real agent output ignored).
+    - "lite": Use real brief if sufficient, fall back to hardcoded.
+    - "off":  Use real brief (normal operation).
+    """
+    settings = get_settings()
+    mode = settings.livedemo_mode
+
+    if mode == "full":
+        address = await _get_address_from_snapshot(store, session_id)
+        brief = get_livedemo_brief(settings.livedemo_scenario, address=address)
+        logger.info(
+            "Session %s: LIVEDEMO_MODE=full, using hardcoded brief for scenario '%s'",
+            session_id, settings.livedemo_scenario,
+        )
+        return brief
+
+    real_brief = await tools.get_emergency_brief()
+
+    if mode == "lite":
+        if _brief_is_sufficient(real_brief):
+            logger.info(
+                "Session %s: LIVEDEMO_MODE=lite, real brief is sufficient",
+                session_id,
+            )
+            return real_brief
+        else:
+            address = await _get_address_from_snapshot(store, session_id)
+            brief = get_livedemo_brief(settings.livedemo_scenario, address=address)
+            logger.warning(
+                "Session %s: LIVEDEMO_MODE=lite, real brief insufficient ('%s'), "
+                "FALLING BACK to hardcoded brief for scenario '%s'",
+                session_id, real_brief[:80], settings.livedemo_scenario,
+            )
+            return brief
+
+    # mode == "off" — normal operation
+    return real_brief
+
+
 async def run_dispatch_agent(
     session_id: str,
     store: SnapshotStore,
@@ -164,7 +236,8 @@ async def run_dispatch_agent(
     }
 
     # Pre-load the emergency brief for the system prompt
-    brief = await tools.get_emergency_brief()
+    # In livedemo mode, this may return a hardcoded brief instead
+    brief = await _resolve_brief(tools, session_id, store)
     logger.info("Session %s: emergency brief: %s", session_id, brief)
     if tracer:
         await tracer.save_dispatch_brief(brief)
